@@ -34,6 +34,14 @@
  * pushed fully left (flush with the nav rail) and the right cluster is zoomed
  * slightly, so the timer no longer sits on top of the bar.
  *
+ * A second portrait-only fix (section 5) handles the game's wide windows
+ * (Workshop, Shop, Squad, Quests, ...): they are two-column layouts that the
+ * game lays out for landscape widths, and whose detail/action column is
+ * literally hidden below the game's 640 CSS px `sm` breakpoint. Each open
+ * modal is re-laid-out at that design width and scaled into the portrait
+ * viewport with a transform, so both columns — including every action button —
+ * stay visible and tappable.
+ *
  * It is injected at document start (before any page script) and is idempotent:
  * a guard flag prevents double installation if injected more than once.
  * It is NOT installed at all when the orientation lock is turned off.
@@ -197,5 +205,114 @@
     setInterval(update, 2000);
     window.addEventListener('resize', update);
     update();
+  })();
+
+  /* 5. Portrait modal fit: wide windows (Workshop, Shop, Squad, Quests...) --- */
+  // These windows are two-column layouts designed for landscape widths. Below
+  // the game's `sm` breakpoint (640 CSS px) the right-hand detail/action
+  // column is literally `hidden ... sm:flex` — gone — and the rest of the
+  // window is laid out to overflow the portrait viewport. Portrait only, each
+  // open modal is handled once (a data attribute marks it; React unmounts
+  // modals when they close, so the marker disappears with them):
+  //
+  //   a) force the landscape-only detail column visible, and
+  //   b) lay the window out at the game's own 640 px design width (where both
+  //      columns render at natural size), then scale it into the viewport
+  //      with a transform. Transforms keep hit-testing aligned, so every
+  //      button stays exactly where it looks.
+  //
+  // Small dialogs (Welcome Back, confirmations) measure within the viewport
+  // and are left untouched.
+  (function () {
+    var FIT_ATTR = 'data-yak-fit';
+    var DESIGN_W = 640; // the game's sm breakpoint: both columns, natural size
+    var FIT_MARGIN = 4; // px of slack before a window counts as overflowing
+
+    function fitModals() {
+      try {
+        if (typeof window.innerWidth !== 'number') return;
+        if (window.innerWidth >= window.innerHeight) return; // portrait only
+        var vw = window.innerWidth;
+        var vh = window.innerHeight;
+        var root = document.getElementById('react-root');
+        if (!root) return;
+
+        var layers = root.children;
+        for (var i = 0; i < layers.length; i++) {
+          var layer = layers[i];
+          if (getComputedStyle(layer).position !== 'fixed') continue;
+          var lr = layer.getBoundingClientRect();
+          // Only full-viewport fixed layers (modal backdrops) count; the HUD
+          // layer is inset by the safe area and is therefore skipped.
+          if (lr.width < vw - 1 || lr.height < vh - 1) continue;
+
+          var modals = layer.children;
+          for (var k = 0; k < modals.length; k++) {
+            var modal = modals[k];
+            if (getComputedStyle(modal).display === 'none') continue;
+            if (modal.hasAttribute(FIT_ATTR)) continue;
+
+            /* a) reveal the landscape-only detail column -------------------- */
+            var cols = modal.querySelectorAll(
+              '[class*="max-w-4xl"] > [class*="sm:flex"]'
+            );
+            for (var c = 0; c < cols.length; c++) {
+              if (getComputedStyle(cols[c]).display === 'none') {
+                cols[c].style.setProperty('display', 'flex', 'important');
+              }
+            }
+
+            /* b) measure the natural content width -------------------------- */
+            var maxRight = 0;
+            var all = modal.querySelectorAll('*');
+            for (var j = 0; j < all.length; j++) {
+              var tag = all[j].tagName;
+              if (tag === 'svg' || tag === 'canvas') continue;
+              var ar = all[j].getBoundingClientRect();
+              if (ar.width > 0 && ar.right > maxRight) maxRight = ar.right;
+            }
+            var mrect = modal.getBoundingClientRect();
+            var naturalW = Math.max(maxRight, mrect.right);
+            if (naturalW <= vw - FIT_MARGIN) {
+              modal.setAttribute(FIT_ATTR, 'noscale'); // fits as-is
+              continue;
+            }
+
+            /* c) design-width layout + scale-to-fit ------------------------- */
+            modal.style.setProperty('width', DESIGN_W + 'px', 'important');
+            var naturalH = modal.getBoundingClientRect().height;
+            var scale = (vw - 8) / DESIGN_W;
+            var tx = (vw - DESIGN_W * scale) / 2;
+            var ty = (vh - naturalH * scale) / 2;
+            modal.style.setProperty(
+              'transform',
+              'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + scale.toFixed(4) + ')',
+              'important'
+            );
+            modal.style.setProperty('transform-origin', '0 0', 'important');
+            modal.setAttribute(FIT_ATTR, 's=' + scale.toFixed(3));
+          }
+        }
+      } catch (e) {
+        /* never let layout tweaks break the page */
+      }
+    }
+
+    // Modals mount/unmount constantly (React), so poll cheaply and also react
+    // to DOM changes for a near-instant fit when a window opens.
+    setInterval(fitModals, 800);
+    window.addEventListener('resize', fitModals);
+    try {
+      var reactRoot = document.getElementById('react-root');
+      if (reactRoot) {
+        var mo = new MutationObserver(function () {
+          setTimeout(fitModals, 60);
+        });
+        mo.observe(reactRoot, { childList: true, subtree: true });
+      }
+    } catch (e) {
+      /* the observer is an optimisation; the poll still runs */
+    }
+    fitModals();
   })();
 })();
