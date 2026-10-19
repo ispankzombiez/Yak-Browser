@@ -33,6 +33,12 @@ object AppPreferences {
      */
     const val KEY_PENDING_RELOAD = "pending_reload"
 
+    /** Number of app starts; drives when the Play rating prompt fires. */
+    const val KEY_SESSION_COUNT = "session_count"
+
+    /** versionName last shown in the What's New dialog. */
+    const val KEY_LAST_SEEN_VERSION = "last_seen_version"
+
     fun isOrientationLockEnabled(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
             .getBoolean(KEY_ORIENTATION_LOCK, true)
@@ -56,5 +62,22 @@ object AppPreferences {
         if (!prefs.getBoolean(KEY_PENDING_RELOAD, false)) return false
         prefs.edit().putBoolean(KEY_PENDING_RELOAD, false).apply()
         return true
+    }
+
+    /** Counts one app start and returns the new total. */
+    fun incrementSessionCount(context: Context): Int {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val next = prefs.getInt(KEY_SESSION_COUNT, 0) + 1
+        prefs.edit().putInt(KEY_SESSION_COUNT, next).apply()
+        return next
+    }
+
+    fun lastSeenVersion(context: Context): String? =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getString(KEY_LAST_SEEN_VERSION, null)
+
+    fun setLastSeenVersion(context: Context, version: String) {
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .edit().putString(KEY_LAST_SEEN_VERSION, version).apply()
     }
 }

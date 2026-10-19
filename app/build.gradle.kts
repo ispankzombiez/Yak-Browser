@@ -24,8 +24,8 @@ android {
         applicationId = "com.yak.browser"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.0.5"
     }
 
     signingConfigs {
@@ -77,4 +77,5 @@ dependencies {
     implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.webkit:webkit:1.11.0")
     implementation("androidx.preference:preference-ktx:1.2.1")
+    implementation("com.google.android.play:review:2.0.2")
 }

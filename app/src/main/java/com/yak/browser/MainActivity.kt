@@ -23,6 +23,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -30,6 +31,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.google.android.play.core.review.ReviewManagerFactory
 
 /**
  * The whole app: a single fullscreen WebView pointed at the Yakkamon game.
@@ -59,6 +61,9 @@ class MainActivity : AppCompatActivity() {
 
     /** True when the spoof should be injected (lock on), regardless of method. */
     private var spoofDesired = false
+
+    /** The currently showing What's New dialog, if any. */
+    private var whatsNewDialog: AlertDialog? = null
 
     /** Cached copy of the orientation override script (injected per navigation as fallback). */
     private val orientationScript: String by lazy {
@@ -135,6 +140,13 @@ class MainActivity : AppCompatActivity() {
             webView.restoreState(savedInstanceState)
         } else {
             webView.loadUrl(HOME_URL)
+
+            // Fresh start: count the session, announce updates once, and
+            // schedule the (Play-throttled) rating ask for after the game
+            // has had time to load.
+            val sessions = AppPreferences.incrementSessionCount(this)
+            maybeShowWhatsNew()
+            window.decorView.postDelayed({ maybeAskForReview(sessions) }, REVIEW_DELAY_MS)
         }
     }
 
@@ -366,6 +378,54 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * After an update, shows a one-time "What's New" dialog listing everything
+     * shipped since the version the user last saw. A fresh install just
+     * records the version silently — nothing is "new" to someone just
+     * arriving.
+     */
+    private fun maybeShowWhatsNew() {
+        val current = runCatching {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        }.getOrNull() ?: return
+        val lastSeen = AppPreferences.lastSeenVersion(this)
+        AppPreferences.setLastSeenVersion(this, current)
+        val notes = WhatsNew.notesSince(lastSeen)
+        if (notes.isEmpty()) return
+        whatsNewDialog = AlertDialog.Builder(this)
+            .setTitle("What's New in v$current")
+            .setMessage(notes.joinToString("\n") { "•  $it" })
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    /**
+     * Asks for a Play rating on the 5th launch and every 10th after that.
+     * Play throttles the actual dialog on its own; debug builds are skipped,
+     * and non-Play installs fail silently (the task never succeeds).
+     */
+    private fun maybeAskForReview(sessions: Int) {
+        if (isFinishing || isDestroyed) return
+        if (whatsNewDialog?.isShowing == true) {
+            // Don't stack the system review flow on top of our dialog.
+            window.decorView.postDelayed({ maybeAskForReview(sessions) }, 5000L)
+            return
+        }
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) return
+        if (sessions < REVIEW_FIRST_SESSION) return
+        if ((sessions - REVIEW_FIRST_SESSION) % REVIEW_REPEAT_EVERY != 0) return
+        try {
+            val manager = ReviewManagerFactory.create(this)
+            manager.requestReviewFlow().addOnCompleteListener { task ->
+                if (task.isSuccessful && !isFinishing && !isDestroyed) {
+                    manager.launchReviewFlow(this, task.result)
+                }
+            }
+        } catch (t: Throwable) {
+            // Play services / store missing — nothing to ask.
+        }
+    }
+
     override fun onPause() {
         webView.onPause()
         super.onPause()
@@ -387,5 +447,8 @@ class MainActivity : AppCompatActivity() {
         private const val YAKKAMON_HOST = "yakkamon.com"
         private const val ORIENTATION_SCRIPT = "orientation-override.js"
         private const val ACTION_RELOAD = "com.yak.browser.action.RELOAD"
+        private const val REVIEW_FIRST_SESSION = 5
+        private const val REVIEW_REPEAT_EVERY = 10
+        private const val REVIEW_DELAY_MS = 8_000L
     }
 }

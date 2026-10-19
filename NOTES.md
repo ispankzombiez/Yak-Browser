@@ -14,6 +14,7 @@ is <https://yakkamon.com/play>.
 | Settings page | Floating **gear button** (top-left corner, kept clear of the game's currency chips and the camera cutout; proper cog icon — white fill + dark outline, `res/drawable/ic_settings.xml`) opens `SettingsActivity` (AndroidX Preference). Switches: **Lock orientation** (key `orientation_lock`, default ON: app locked to portrait + landscape spoof to the site; OFF: follows the device sensor, no spoof) and **Settings access** (key `settings_access`, default OFF: hides the floating gear; applied via `applySettingsAccess()` in `MainActivity.onCreate`/`onResume`). Changing orientation lock rebuilds the browser screen on return. Also: **Keep screen on** (key `keep_screen_on`, default ON: `FLAG_KEEP_SCREEN_ON` via `applyKeepScreenOn()`), a **Reload game** row (sets `pending_reload`; `MainActivity.onResume` consumes it and `recreate()`s — the flag hand-off works from every settings entry point, including the App info row), and an **About** category (version from `PackageManager` — no BuildConfig needed, Privacy Policy in a Custom Tab, `mailto:` support). |
 | Settings entry points | Settings stay reachable even with the gear hidden, on every OEM: (1) **static "Settings" + "Reload" long-press shortcuts** on the app icon (`res/xml/shortcuts.xml` + a `src/debug` override carrying the `.debug` applicationId; note the attrs are `android:shortcutShortLabel`/`shortcutLongLabel` — plain `shortLabel`/`longLabel` do not exist in the framework and fail AAPT, and the label attrs require `@string/` references); (2) **`APPLICATION_PREFERENCES` + `NOTIFICATION_PREFERENCES` intent filter** on the exported `SettingsActivity` (same pattern as SFL-Browser) — Samsung One UI shows a **"Configure in &lt;app&gt;"** row on the App info page (under Usage), verified live on device. |
 | Robustness | Error panel with Retry on main-frame load failures; WebView renderer crashes handled via `onRenderProcessGone`; DOM storage + autoplay audio enabled for the game. |
+| Updates & rating | `WhatsNew.kt` holds per-release bullet notes; on a fresh start the app compares the stored `last_seen_version` against the current versionName and shows a one-time AlertDialog listing everything newer (numeric version compare, so 1.0.10 > 1.0.9; fresh installs just record the version silently). The Play **In-App Review** flow fires on the 5th session and every 10th after that — 8 s after a fresh start, never stacked on the What's New dialog, skipped in debug builds, and a silent no-op on non-Play installs (`com.google.android.play:review:2.0.2`). Add a `WhatsNew` block per release. |
 
 Verified facts about the origin-matching rules used for the injection
 (from the androidx.webkit reference): `https://yakkamon.com` matches only the
@@ -151,6 +152,17 @@ at y = −298 px; the two-step version lands it exactly centred
 (`{l:118, t:4, w:147, h:824}` on the 384×832 viewport, verified via CDP).
 The user live-tested the release during verification (flipped "Settings
 access" ON themselves — the hidden-gear flow worked without prompting).
+
+**Status (2026-10-19, latest): v1.0.5 (versionCode 6).** (1) **In-App
+Review**: fires on session 5 then every 10th (8 s after a fresh start, never
+on top of the What's New dialog, skipped in debug; silent no-op off Play —
+it cannot be exercised on the sideloaded debug build, verify from a Play
+install). (2) **What's New sheet**: `WhatsNew.kt` changelog (add a block per
+release), one-time dialog after an update listing everything since the
+stored `last_seen_version`; fresh installs record the version silently.
+Testing trick: `run-as com.yak.browser.debug sed -i` the prefs file's
+`last_seen_version` back a version, force-stop, relaunch — the dialog
+appears, then verify it does not reappear on the next launch.
 
 ## Build / run
 
