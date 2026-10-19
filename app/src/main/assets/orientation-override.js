@@ -315,4 +315,89 @@
     }
     fitModals();
   })();
+
+  /* 6. Generic window safety net: any *other* window that overflows --------- */
+  // Section 5 handles the known window shapes. The game will keep shipping new
+  // ones (events, trading, ...), so this last-resort pass catches anything it
+  // doesn't claim: a full-viewport backdrop whose visible box is taller or
+  // wider than the portrait screen gets centred and scaled down to fit.
+  // Boxes that already fit, and everything section 5 actually scaled, are left
+  // alone — so the known windows keep their pixel-perfect treatment. One
+  // refinement: section 5's 'noscale' mark only means "width fits", so those
+  // are re-examined here for height overflow, which section 5 never measures.
+  (function () {
+    var FIT_ATTR = 'data-yak-fit';
+    var FIT_MARGIN = 4;
+
+    function fitOverflowing() {
+      try {
+        if (typeof window.innerWidth !== 'number') return;
+        if (window.innerWidth >= window.innerHeight) return; // portrait only
+        var vw = window.innerWidth;
+        var vh = window.innerHeight;
+        var root = document.getElementById('react-root');
+        if (!root) return;
+
+        var layers = root.children;
+        for (var i = 0; i < layers.length; i++) {
+          var layer = layers[i];
+          if (getComputedStyle(layer).position !== 'fixed') continue;
+          var lr = layer.getBoundingClientRect();
+          // Only full-viewport fixed layers (modal backdrops) count; the HUD
+          // layer is inset by the safe area and is therefore skipped.
+          if (lr.width < vw - 1 || lr.height < vh - 1) continue;
+
+          var modals = layer.children;
+          for (var k = 0; k < modals.length; k++) {
+            var modal = modals[k];
+            if (getComputedStyle(modal).display === 'none') continue;
+            var mark = modal.getAttribute(FIT_ATTR);
+            if (mark && mark !== 'noscale') continue; // section 5 scaled it / mine
+
+            var mrect = modal.getBoundingClientRect();
+            if (mrect.width <= vw - FIT_MARGIN && mrect.height <= vh - FIT_MARGIN) {
+              if (!mark) modal.setAttribute(FIT_ATTR, 'generic-fit');
+              continue;
+            }
+
+            // Scale first, then measure the *visual* rect and shift it into
+            // the viewport centre. The correction step makes the result
+            // independent of where the window's layout happens to sit (the
+            // game scroll-locks layers around its own modals, which can
+            // offset fixed-position children), so any shape ends up centred.
+            var scale = Math.min((vw - 8) / mrect.width, (vh - 8) / mrect.height);
+            modal.style.setProperty('transform-origin', '0 0', 'important');
+            modal.style.setProperty('transform', 'scale(' + scale.toFixed(4) + ')', 'important');
+            var vrect = modal.getBoundingClientRect();
+            var tx = (vw - vrect.width) / 2 - vrect.left;
+            var ty = (vh - vrect.height) / 2 - vrect.top;
+            modal.style.setProperty(
+              'transform',
+              'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + scale.toFixed(4) + ')',
+              'important'
+            );
+            modal.setAttribute(FIT_ATTR, 'generic-s=' + scale.toFixed(3));
+          }
+        }
+      } catch (e) {
+        /* never let layout tweaks break the page */
+      }
+    }
+
+    // Same rhythm as section 5: poll + DOM observer, portrait only.
+    setInterval(fitOverflowing, 800);
+    window.addEventListener('resize', fitOverflowing);
+    try {
+      var reactRoot = document.getElementById('react-root');
+      if (reactRoot) {
+        var mo = new MutationObserver(function () {
+          setTimeout(fitOverflowing, 60);
+        });
+        mo.observe(reactRoot, { childList: true, subtree: true });
+      }
+    } catch (e) {
+      /* the observer is an optimisation; the poll still runs */
+    }
+    fitOverflowing();
+  })();
 })();

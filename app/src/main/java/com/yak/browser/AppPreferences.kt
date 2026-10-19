@@ -21,6 +21,18 @@ object AppPreferences {
      */
     const val KEY_SETTINGS_ACCESS = "settings_access"
 
+    /**
+     * When true (default), the game screen keeps the device awake while it is
+     * in front. When false, normal system sleep applies.
+     */
+    const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
+
+    /**
+     * One-shot flag set by the "Reload game" actions (settings row or the
+     * long-press shortcut); consumed by the browser screen on resume.
+     */
+    const val KEY_PENDING_RELOAD = "pending_reload"
+
     fun isOrientationLockEnabled(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
             .getBoolean(KEY_ORIENTATION_LOCK, true)
@@ -28,4 +40,21 @@ object AppPreferences {
     fun isSettingsAccessHidden(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
             .getBoolean(KEY_SETTINGS_ACCESS, false)
+
+    fun isKeepScreenOn(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_KEEP_SCREEN_ON, true)
+
+    fun requestReload(context: Context) {
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .edit().putBoolean(KEY_PENDING_RELOAD, true).apply()
+    }
+
+    /** True exactly once per request; clears the flag when observed. */
+    fun consumeReloadRequest(context: Context): Boolean {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        if (!prefs.getBoolean(KEY_PENDING_RELOAD, false)) return false
+        prefs.edit().putBoolean(KEY_PENDING_RELOAD, false).apply()
+        return true
+    }
 }

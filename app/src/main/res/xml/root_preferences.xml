@@ -15,4 +15,34 @@
         app:summaryOn="Floating gear hidden — open Settings from your device&#8217;s App info page"
         app:title="Settings access" />
 
+    <SwitchPreferenceCompat
+        app:defaultValue="true"
+        app:key="keep_screen_on"
+        app:summaryOff="Screen may sleep while the game is open"
+        app:summaryOn="Screen stays awake during play"
+        app:title="Keep screen on" />
+
+    <Preference
+        app:key="reload_game"
+        app:summary="Restarts the game page without closing the app"
+        app:title="Reload game" />
+
+    <PreferenceCategory app:title="About">
+
+        <Preference
+            app:key="about_version"
+            app:title="Version" />
+
+        <Preference
+            app:key="about_privacy"
+            app:summary="Opens in your browser"
+            app:title="Privacy Policy" />
+
+        <Preference
+            app:key="about_support"
+            app:summary="iSPANKapps@gmail.com"
+            app:title="Contact support" />
+
+    </PreferenceCategory>
+
 </PreferenceScreen>

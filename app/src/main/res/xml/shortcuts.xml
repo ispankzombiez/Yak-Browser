@@ -23,4 +23,16 @@
             android:targetClass="com.yak.browser.SettingsActivity"
             android:targetPackage="com.yak.browser" />
     </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_reload"
+        android:shortcutId="reload"
+        android:shortcutShortLabel="@string/shortcut_reload_short"
+        android:shortcutLongLabel="@string/shortcut_reload_long">
+        <intent
+            android:action="com.yak.browser.action.RELOAD"
+            android:targetClass="com.yak.browser.MainActivity"
+            android:targetPackage="com.yak.browser" />
+    </shortcut>
 </shortcuts>

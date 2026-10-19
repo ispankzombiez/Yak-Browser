@@ -75,8 +75,9 @@ class MainActivity : AppCompatActivity() {
             WebView.setWebContentsDebuggingEnabled(true)
         }
 
-        // Keep the screen on while the game is in front, and go immersive.
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Keep the screen on while the game is in front (toggleable in
+        // settings), and go immersive.
+        applyKeepScreenOn()
         hideSystemBars()
 
         setContentView(R.layout.activity_main)
@@ -334,12 +335,35 @@ class MainActivity : AppCompatActivity() {
         // The "Settings access" toggle hides/shows the floating gear; settings
         // remain reachable from the device's App info page either way.
         applySettingsAccess()
+
+        // "Reload game" (settings row / long-press shortcut): rebuild the
+        // browser screen for a clean reload with the spoof freshly installed.
+        if (AppPreferences.consumeReloadRequest(this)) {
+            recreate()
+        }
     }
 
     /** Applies the "Settings access" toggle to the floating gear button. */
     private fun applySettingsAccess() {
         findViewById<ImageView>(R.id.settingsButton).visibility =
             if (AppPreferences.isSettingsAccessHidden(this)) View.GONE else View.VISIBLE
+    }
+
+    /** Applies the "Keep screen on" toggle (default ON while playing). */
+    private fun applyKeepScreenOn() {
+        if (AppPreferences.isKeepScreenOn(this)) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Long-press "Reload" shortcut while the app is already running.
+        if (intent.action == ACTION_RELOAD) {
+            webView.reload()
+        }
     }
 
     override fun onPause() {
@@ -362,5 +386,6 @@ class MainActivity : AppCompatActivity() {
         private const val HOME_URL = "https://yakkamon.com/play"
         private const val YAKKAMON_HOST = "yakkamon.com"
         private const val ORIENTATION_SCRIPT = "orientation-override.js"
+        private const val ACTION_RELOAD = "com.yak.browser.action.RELOAD"
     }
 }

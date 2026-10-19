@@ -11,8 +11,8 @@ is <https://yakkamon.com/play>.
 | Navigation policy | `yakkamon.com` and all subdomains load inside the app. Any other link opens in the user's default browser via a **Chrome Custom Tab**, so the game WebView never navigates away. Other schemes (`javascript:`, `file:`, `intent:`) are blocked. |
 | Landscape enforcement | Two layers, active while the **orientation lock** setting is ON (default): (1) the activity is locked to **portrait** (`screenOrientation="portrait"`), so the game is played holding the phone normally; (2) `assets/orientation-override.js` is injected **at document start** (via `WebViewCompat.addDocumentStartJavaScript`) and tells the site `window.orientation`, `screen.orientation.type/.angle/.lock()` and `matchMedia('(orientation: …)')` that the device is in **landscape** — the game only runs when it believes it's landscape, so this white lie lets it play in portrait. |
 | Immersive fullscreen | System bars hidden with swipe-from-edge reveal; screen kept on (`FLAG_KEEP_SCREEN_ON`). |
-| Settings page | Floating **gear button** (top-left corner, kept clear of the game's currency chips and the camera cutout; proper cog icon — white fill + dark outline, `res/drawable/ic_settings.xml`) opens `SettingsActivity` (AndroidX Preference). Switches: **Lock orientation** (key `orientation_lock`, default ON: app locked to portrait + landscape spoof to the site; OFF: follows the device sensor, no spoof) and **Settings access** (key `settings_access`, default OFF: hides the floating gear; applied via `applySettingsAccess()` in `MainActivity.onCreate`/`onResume`). Changing orientation lock rebuilds the browser screen on return. |
-| Settings entry points | Settings stay reachable even with the gear hidden, on every OEM: (1) **static "Settings" long-press shortcut** on the app icon (`res/xml/shortcuts.xml` + a `src/debug` override carrying the `.debug` applicationId; note the attrs are `android:shortcutShortLabel`/`shortcutLongLabel` — plain `shortLabel`/`longLabel` do not exist in the framework and fail AAPT); (2) **`APPLICATION_PREFERENCES` + `NOTIFICATION_PREFERENCES` intent filter** on the exported `SettingsActivity` (same pattern as SFL-Browser) — Samsung One UI shows a **"Configure in &lt;app&gt;"** row on the App info page (under Usage), verified live on device. |
+| Settings page | Floating **gear button** (top-left corner, kept clear of the game's currency chips and the camera cutout; proper cog icon — white fill + dark outline, `res/drawable/ic_settings.xml`) opens `SettingsActivity` (AndroidX Preference). Switches: **Lock orientation** (key `orientation_lock`, default ON: app locked to portrait + landscape spoof to the site; OFF: follows the device sensor, no spoof) and **Settings access** (key `settings_access`, default OFF: hides the floating gear; applied via `applySettingsAccess()` in `MainActivity.onCreate`/`onResume`). Changing orientation lock rebuilds the browser screen on return. Also: **Keep screen on** (key `keep_screen_on`, default ON: `FLAG_KEEP_SCREEN_ON` via `applyKeepScreenOn()`), a **Reload game** row (sets `pending_reload`; `MainActivity.onResume` consumes it and `recreate()`s — the flag hand-off works from every settings entry point, including the App info row), and an **About** category (version from `PackageManager` — no BuildConfig needed, Privacy Policy in a Custom Tab, `mailto:` support). |
+| Settings entry points | Settings stay reachable even with the gear hidden, on every OEM: (1) **static "Settings" + "Reload" long-press shortcuts** on the app icon (`res/xml/shortcuts.xml` + a `src/debug` override carrying the `.debug` applicationId; note the attrs are `android:shortcutShortLabel`/`shortcutLongLabel` — plain `shortLabel`/`longLabel` do not exist in the framework and fail AAPT, and the label attrs require `@string/` references); (2) **`APPLICATION_PREFERENCES` + `NOTIFICATION_PREFERENCES` intent filter** on the exported `SettingsActivity` (same pattern as SFL-Browser) — Samsung One UI shows a **"Configure in &lt;app&gt;"** row on the App info page (under Usage), verified live on device. |
 | Robustness | Error panel with Retry on main-frame load failures; WebView renderer crashes handled via `onRenderProcessGone`; DOM storage + autoplay audio enabled for the game. |
 
 Verified facts about the origin-matching rules used for the injection
@@ -132,6 +132,25 @@ long-press "Settings" shortcut** (all launchers) and the **"Configure in
 gear → settings → toggle ON → gear hidden → App info row → settings →
 toggle OFF → gear returns). Gotcha hit on the way: framework attrs are
 `android:shortcutShortLabel`/`shortcutLongLabel`.
+
+**Status (2026-10-19, later still): v1.0.4 (versionCode 5).** New since
+v1.0.3 — (1) **"Reload game"**: settings row + a second static long-press
+**"Reload"** shortcut (`com.yak.browser.action.RELOAD` → `onNewIntent` →
+`webView.reload()`; the settings row sets `pending_reload`, consumed by
+`onResume` → `recreate()`, so it works from every entry point) — freeze
+recovery without killing the app; (2) **About section**: version
+(`PackageManager`), Privacy Policy (Custom Tab), support (`mailto:`);
+(3) **"Keep screen on"** toggle (default ON); (4) **generic window-fit
+safety net** — section 6 of `orientation-override.js`: any full-viewport
+overlay section 5 doesn't claim that overflows portrait gets scale-to-fit.
+Critical detail: the fit is **self-correcting** (scale → re-measure the
+visual rect → shift to centre) because the game scroll-locks layers around
+its own modals, which offsets fixed-position children — a single-pass
+translate computed from layout metrics landed a synthetic 340×1900 overlay
+at y = −298 px; the two-step version lands it exactly centred
+(`{l:118, t:4, w:147, h:824}` on the 384×832 viewport, verified via CDP).
+The user live-tested the release during verification (flipped "Settings
+access" ON themselves — the hidden-gear flow worked without prompting).
 
 ## Build / run
 

@@ -6,4 +6,7 @@
     <string name="settings_title">Settings</string>
     <string name="shortcut_settings_short">Settings</string>
     <string name="shortcut_settings_long">YakBrowser settings</string>
+    <string name="shortcut_reload_short">Reload</string>
+    <string name="shortcut_reload_long">Reload game</string>
+    <string name="no_email_app">No email app found</string>
 </resources>

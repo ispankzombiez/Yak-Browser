@@ -1,11 +1,16 @@
 package com.yak.browser
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 
 /**
@@ -40,6 +45,66 @@ class SettingsActivity : AppCompatActivity() {
     class SettingsFragment : PreferenceFragmentCompat() {
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.root_preferences, rootKey)
+
+            // "Reload game": flag the browser screen and close settings; the
+            // game reloads on resume. The flag-based hand-off works from every
+            // entry point (gear, App info row, long-press shortcut), because
+            // MainActivity.onResume consumes it whenever the app comes back.
+            findPreference<Preference>(KEY_RELOAD)?.onPreferenceClickListener =
+                Preference.OnPreferenceClickListener {
+                    AppPreferences.requestReload(requireContext())
+                    requireActivity().finish()
+                    true
+                }
+
+            // Version, straight from the package (no BuildConfig needed).
+            findPreference<Preference>(KEY_VERSION)?.summary = runCatching {
+                requireContext().packageManager
+                    .getPackageInfo(requireContext().packageName, 0).versionName
+            }.getOrNull() ?: "unknown"
+
+            findPreference<Preference>(KEY_PRIVACY)?.onPreferenceClickListener =
+                Preference.OnPreferenceClickListener {
+                    openUrl(PRIVACY_URL)
+                    true
+                }
+
+            findPreference<Preference>(KEY_SUPPORT)?.onPreferenceClickListener =
+                Preference.OnPreferenceClickListener {
+                    val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$SUPPORT_EMAIL"))
+                    try {
+                        startActivity(mail)
+                    } catch (e: ActivityNotFoundException) {
+                        Toast.makeText(requireContext(), R.string.no_email_app, Toast.LENGTH_SHORT)
+                            .show()
+                    }
+                    true
+                }
+        }
+
+        /** Opens a URL outside the game, in a Custom Tab (browser fallback). */
+        private fun openUrl(url: String) {
+            val uri = Uri.parse(url)
+            val customTab = CustomTabsHelper.build(requireContext(), uri)
+            try {
+                startActivity(customTab)
+            } catch (e: ActivityNotFoundException) {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, uri))
+                } catch (e2: ActivityNotFoundException) {
+                    Toast.makeText(requireContext(), R.string.no_browser_found, Toast.LENGTH_SHORT)
+                        .show()
+                }
+            }
+        }
+
+        companion object {
+            private const val KEY_RELOAD = "reload_game"
+            private const val KEY_VERSION = "about_version"
+            private const val KEY_PRIVACY = "about_privacy"
+            private const val KEY_SUPPORT = "about_support"
+            private const val PRIVACY_URL = "https://ispankzombiez.github.io/Yak-Browser/"
+            private const val SUPPORT_EMAIL = "iSPANKapps@gmail.com"
         }
     }
 }
