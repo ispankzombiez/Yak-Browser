@@ -111,12 +111,14 @@ Questions to ask the Yakkamon team when the API is ready:
 Release checklist per version: bump versions → push → run the workflow →
 download the APK from the `latest` release → build + upload the AAB to Play.
 
-**Status (2026-10-19): v1.0.1 shipped.** ✅ 4 Actions secrets set; `v1.0.0`
-released (v1.0.0's versionCode 1 was already taken on Play, so v1.0.1 bumped
-to versionCode 2 — Google counts version codes as integers per app). Signing
-cert SHA-256 `84bb69a7…d9ed4` = the local upload key everywhere. Pages live.
-Remaining: the Play Console submission itself (AAB + store listing +
-screenshots).
+**Status (2026-10-19): v1.0.2 shipped.** ✅ 4 Actions secrets set; `v1.0.0`
+released (v1.0.0's versionCode 1 was already taken on Play, so version codes
+kept climbing per app — v1.0.1 = 2, v1.0.2 = 3). v1.0.2 fixes the wide game
+windows (Workshop/Shop/Squad/Quests) in portrait: section 5 of
+`orientation-override.js` reveals the game's `sm:`-hidden detail column and
+fits each modal via design-width + transform. Signing cert SHA-256
+`84bb69a7…d9ed4` = the local upload key everywhere. Pages live. Remaining:
+the Play Console submission itself (AAB + store listing + screenshots).
 
 ## Build / run
 
