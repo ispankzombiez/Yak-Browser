@@ -80,8 +80,11 @@ Questions to ask the Yakkamon team when the API is ready:
       - `play-store/feature-graphic-1024x500.png` (1024×500 feature graphic)
       Source art: `C:\Users\caleb\Documents\Yakkamon Fan art\pngs\owl.png`
       (generator script: `%TEMP%\opencode\yak\make-play-assets.ps1`).
-      Still TODO: in-app launcher icon is the placeholder vector — replace
-      with the owl (adaptive icon) when desired; screenshots (≥2 portrait).
+- [x] **In-app launcher icon**: also the owl now — adaptive icon with
+      `drawable-nodpi/ic_launcher_foreground.png` (432×432 canvas), a purple
+      gradient `drawable/ic_launcher_background.xml`, and a `monochrome`
+      layer for Android 13 themed icons.
+- [ ] **Screenshots + store descriptions**: still TODO (see below).
 - [ ] **Privacy policy URL** (required — the app has internet access; also needed
       for the Data Safety form).
 - [ ] **Data Safety form**: declare that no data is collected/shared for now
