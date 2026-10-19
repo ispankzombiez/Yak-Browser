@@ -8,4 +8,11 @@
         app:summaryOn="Game always stays in portrait (site is told it&#8217;s landscape)"
         app:title="Lock orientation" />
 
+    <SwitchPreferenceCompat
+        app:defaultValue="false"
+        app:key="settings_access"
+        app:summaryOff="Floating gear button shown on the game screen"
+        app:summaryOn="Floating gear hidden — open Settings from your device&#8217;s App info page"
+        app:title="Settings access" />
+
 </PreferenceScreen>

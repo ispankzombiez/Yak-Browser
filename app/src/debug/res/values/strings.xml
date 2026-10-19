@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">YakBrowser Debug</string>
+    <string name="shortcut_settings_short">Settings</string>
+    <string name="shortcut_settings_long">YakBrowser Debug settings</string>
 </resources>

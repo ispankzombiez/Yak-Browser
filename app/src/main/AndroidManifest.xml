@@ -23,14 +23,29 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Static "Settings" long-press shortcut: the universal entry
+                 point to the settings screen on every launcher/OEM. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
+        <!-- Settings Activity - reachable from the device's App info page
+             (Settings > Apps > YakBrowser) via APPLICATION_PREFERENCES, so the
+             screen stays reachable even when the floating gear is hidden. -->
         <activity
             android:name=".SettingsActivity"
-            android:exported="false"
+            android:exported="true"
             android:label="@string/settings_title"
             android:parentActivityName=".MainActivity"
-            android:theme="@style/Theme.YakBrowser.Settings" />
+            android:theme="@style/Theme.YakBrowser.Settings">
+            <intent-filter>
+                <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.NOTIFICATION_PREFERENCES" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

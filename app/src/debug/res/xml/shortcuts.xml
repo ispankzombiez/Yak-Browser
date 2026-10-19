@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug build variant of the static "Settings" shortcut: identical to
+  src/main/res/xml/shortcuts.xml except the target package carries the
+  .debug applicationId suffix.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_settings"
+        android:shortcutId="settings"
+        android:shortcutShortLabel="@string/shortcut_settings_short"
+        android:shortcutLongLabel="@string/shortcut_settings_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.yak.browser.SettingsActivity"
+            android:targetPackage="com.yak.browser.debug" />
+    </shortcut>
+</shortcuts>

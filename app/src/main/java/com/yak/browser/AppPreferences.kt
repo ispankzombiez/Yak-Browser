@@ -14,7 +14,18 @@ object AppPreferences {
      */
     const val KEY_ORIENTATION_LOCK = "orientation_lock"
 
+    /**
+     * When true, the floating settings gear on the game screen is hidden and
+     * settings are reached through an entry point on the device instead.
+     * Default false: the floating gear shows, as always.
+     */
+    const val KEY_SETTINGS_ACCESS = "settings_access"
+
     fun isOrientationLockEnabled(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
             .getBoolean(KEY_ORIENTATION_LOCK, true)
+
+    fun isSettingsAccessHidden(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_SETTINGS_ACCESS, false)
 }

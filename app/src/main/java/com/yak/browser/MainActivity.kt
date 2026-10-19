@@ -92,6 +92,7 @@ class MainActivity : AppCompatActivity() {
         settingsButton.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+        applySettingsAccess()
         // Keep the gear clear of the camera cutout / status area: pad it by the
         // safe insets the same way the page's own HUD does.
         ViewCompat.setOnApplyWindowInsetsListener(settingsButton) { v, insets ->
@@ -329,6 +330,16 @@ class MainActivity : AppCompatActivity() {
         if (nowEnabled != orientationLockEnabled) {
             recreate()
         }
+
+        // The "Settings access" toggle hides/shows the floating gear; settings
+        // remain reachable from the device's App info page either way.
+        applySettingsAccess()
+    }
+
+    /** Applies the "Settings access" toggle to the floating gear button. */
+    private fun applySettingsAccess() {
+        findViewById<ImageView>(R.id.settingsButton).visibility =
+            if (AppPreferences.isSettingsAccessHidden(this)) View.GONE else View.VISIBLE
     }
 
     override fun onPause() {

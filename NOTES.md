@@ -11,7 +11,8 @@ is <https://yakkamon.com/play>.
 | Navigation policy | `yakkamon.com` and all subdomains load inside the app. Any other link opens in the user's default browser via a **Chrome Custom Tab**, so the game WebView never navigates away. Other schemes (`javascript:`, `file:`, `intent:`) are blocked. |
 | Landscape enforcement | Two layers, active while the **orientation lock** setting is ON (default): (1) the activity is locked to **portrait** (`screenOrientation="portrait"`), so the game is played holding the phone normally; (2) `assets/orientation-override.js` is injected **at document start** (via `WebViewCompat.addDocumentStartJavaScript`) and tells the site `window.orientation`, `screen.orientation.type/.angle/.lock()` and `matchMedia('(orientation: …)')` that the device is in **landscape** — the game only runs when it believes it's landscape, so this white lie lets it play in portrait. |
 | Immersive fullscreen | System bars hidden with swipe-from-edge reveal; screen kept on (`FLAG_KEEP_SCREEN_ON`). |
-| Settings page | Gear overlay (**top-left corner**, kept clear of the game's currency chips and the camera cutout) opens `SettingsActivity` (AndroidX Preference). Single switch: **Lock orientation** (key `orientation_lock`, default ON). ON = app locked to portrait + landscape spoof to the site (play in portrait); OFF = app follows the device sensor and the spoof is not installed. Changing it rebuilds the browser screen on return. |
+| Settings page | Floating **gear button** (top-left corner, kept clear of the game's currency chips and the camera cutout; proper cog icon — white fill + dark outline, `res/drawable/ic_settings.xml`) opens `SettingsActivity` (AndroidX Preference). Switches: **Lock orientation** (key `orientation_lock`, default ON: app locked to portrait + landscape spoof to the site; OFF: follows the device sensor, no spoof) and **Settings access** (key `settings_access`, default OFF: hides the floating gear; applied via `applySettingsAccess()` in `MainActivity.onCreate`/`onResume`). Changing orientation lock rebuilds the browser screen on return. |
+| Settings entry points | Settings stay reachable even with the gear hidden, on every OEM: (1) **static "Settings" long-press shortcut** on the app icon (`res/xml/shortcuts.xml` + a `src/debug` override carrying the `.debug` applicationId; note the attrs are `android:shortcutShortLabel`/`shortcutLongLabel` — plain `shortLabel`/`longLabel` do not exist in the framework and fail AAPT); (2) **`APPLICATION_PREFERENCES` + `NOTIFICATION_PREFERENCES` intent filter** on the exported `SettingsActivity` (same pattern as SFL-Browser) — Samsung One UI shows a **"Configure in &lt;app&gt;"** row on the App info page (under Usage), verified live on device. |
 | Robustness | Error panel with Retry on main-frame load failures; WebView renderer crashes handled via `onRenderProcessGone`; DOM storage + autoplay audio enabled for the game. |
 
 Verified facts about the origin-matching rules used for the injection
@@ -119,6 +120,18 @@ windows (Workshop/Shop/Squad/Quests) in portrait: section 5 of
 fits each modal via design-width + transform. Signing cert SHA-256
 `84bb69a7…d9ed4` = the local upload key everywhere. Pages live. Remaining:
 the Play Console submission itself (AAB + store listing + screenshots).
+
+**Status (2026-10-19, later): v1.0.3 (versionCode 4) in progress.** New since
+v1.0.2 — (1) floating button is now a proper **gear icon** (Material cog,
+white fill + dark outline, alpha 0.65, layout tint removed); (2) **"Settings
+access"** toggle hides the floating gear (default OFF); (3) two universal
+settings entry points so the gear can be safely hidden: the **static
+long-press "Settings" shortcut** (all launchers) and the **"Configure in
+&lt;app&gt;"** row on Samsung's App info page via `APPLICATION_PREFERENCES`
+(proven SFL-Browser pattern — full round-trip verified on device:
+gear → settings → toggle ON → gear hidden → App info row → settings →
+toggle OFF → gear returns). Gotcha hit on the way: framework attrs are
+`android:shortcutShortLabel`/`shortcutLongLabel`.
 
 ## Build / run
 

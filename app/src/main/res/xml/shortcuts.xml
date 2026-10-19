@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Static "Settings" shortcut in the app icon's long-press menu.
+
+  This is the universal entry point (works on every launcher/OEM since
+  Android 7.1), complementing the App info row that phones like Samsung
+  show for the APPLICATION_PREFERENCES intent. Together they guarantee the
+  settings screen is always reachable, even with the floating gear hidden
+  by the "Settings access" toggle.
+
+  Note: src/debug/res/xml/shortcuts.xml overrides this file for debug
+  builds (different applicationId suffix).
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_settings"
+        android:shortcutId="settings"
+        android:shortcutShortLabel="@string/shortcut_settings_short"
+        android:shortcutLongLabel="@string/shortcut_settings_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.yak.browser.SettingsActivity"
+            android:targetPackage="com.yak.browser" />
+    </shortcut>
+</shortcuts>
