@@ -74,11 +74,14 @@ Questions to ask the Yakkamon team when the API is ready:
       **Never** commit either file — both are outside the repo / gitignored.
 - [ ] **App identity**: package `com.yak.browser` is **immutable** once published.
 - [ ] **Target API**: `targetSdk = 36` (meets current Play requirements).
-- [ ] **Store listing assets**:
-  - App icon: 512×512 PNG (replace the placeholder "Yak Ball" vector).
-  - Feature graphic: 1024×500.
-  - Screenshots: at least 2 — the app is landscape-only, so capture in landscape.
-  - Short + full description.
+- [x] **Store listing assets — icon + feature graphic**: generated from the
+      owl Yakkamon pixel art into `play-store/`:
+      - `play-store/icon-512.png` (512×512 icon)
+      - `play-store/feature-graphic-1024x500.png` (1024×500 feature graphic)
+      Source art: `C:\Users\caleb\Documents\Yakkamon Fan art\pngs\owl.png`
+      (generator script: `%TEMP%\opencode\yak\make-play-assets.ps1`).
+      Still TODO: in-app launcher icon is the placeholder vector — replace
+      with the owl (adaptive icon) when desired; screenshots (≥2 portrait).
 - [ ] **Privacy policy URL** (required — the app has internet access; also needed
       for the Data Safety form).
 - [ ] **Data Safety form**: declare that no data is collected/shared for now
