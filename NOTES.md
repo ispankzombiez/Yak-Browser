@@ -111,6 +111,12 @@ Questions to ask the Yakkamon team when the API is ready:
 Release checklist per version: bump versions → push → run the workflow →
 download the APK from the `latest` release → build + upload the AAB to Play.
 
+**Status (2026-10-19): v1.0.0 shipped.** ✅ 4 Actions secrets set, release
+workflow run #1 succeeded, `v1.0.0` + `latest` releases published with
+`yakbrowser-v1.0.0.apk` (779 KB, V2-signed; cert SHA-256 `84bb69a7…d9ed4`
+= the local upload key), Pages live. Remaining: the Play Console submission
+itself (AAB + store listing + screenshots).
+
 ## Build / run
 
 ```powershell
