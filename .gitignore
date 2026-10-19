@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio / IntelliJ
+.idea/
+.kotlin/
+*.iml
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing (never commit keystores or passwords)
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# Misc
+.DS_Store
+
+# Build outputs (never commit binaries)
+*.apk
+*.aab

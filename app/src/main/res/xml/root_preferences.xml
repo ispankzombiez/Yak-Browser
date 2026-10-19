@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <SwitchPreferenceCompat
+        app:defaultValue="true"
+        app:key="orientation_lock"
+        app:summaryOff="Follows device rotation — real orientation sent to the site"
+        app:summaryOn="Game always stays in portrait (site is told it&#8217;s landscape)"
+        app:title="Lock orientation" />
+
+</PreferenceScreen>

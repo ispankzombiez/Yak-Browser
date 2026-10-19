@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">YakBrowser</string>
+    <string name="error_message">Couldn\'t load the game.\nCheck your connection and try again.</string>
+    <string name="retry">Retry</string>
+    <string name="no_browser_found">No browser app found to open this link</string>
+    <string name="settings_title">Settings</string>
+</resources>

@@ -1,0 +1,82 @@
+
+name: Android Release Build
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Decode keystore
+        run: |
+          echo "$RELEASE_KEYSTORE" | base64 -d > app/yakbrowser-release.jks
+        env:
+          RELEASE_KEYSTORE: ${{ secrets.RELEASE_KEYSTORE }}
+
+      - name: Create signing properties
+        run: |
+          echo "RELEASE_STORE_FILE=yakbrowser-release.jks" > signing.properties
+          echo "RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD" >> signing.properties
+          echo "RELEASE_KEY_ALIAS=$KEY_ALIAS" >> signing.properties
+          echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD" >> signing.properties
+
+      - name: Grant execute permission to gradlew
+        run: chmod +x gradlew
+
+      - name: Build Release APK
+        run: |
+          ./gradlew assembleRelease
+
+      - name: Get version name from build.gradle.kts
+        id: version
+        run: |
+          VERSION_NAME=$(grep versionName app/build.gradle.kts | head -1 | sed 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/')
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+
+      - name: Rename APK with version
+        run: |
+          mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/yakbrowser-v${{ steps.version.outputs.version_name }}.apk
+
+      - name: Create versioned GitHub Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version_name }}
+          name: YakBrowser v${{ steps.version.outputs.version_name }}
+          body: Automated release of YakBrowser version ${{ steps.version.outputs.version_name }} APK.
+          draft: false
+          prerelease: false
+          files: app/build/outputs/apk/release/yakbrowser-v${{ steps.version.outputs.version_name }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update 'latest' GitHub Release with newest APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: YakBrowser (Latest)
+          body: |
+            This is the latest release. For version history, see previous releases.
+
+            Version: ${{ steps.version.outputs.version_name }}
+          draft: false
+          prerelease: false
+          files: app/build/outputs/apk/release/yakbrowser-v${{ steps.version.outputs.version_name }}.apk
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
