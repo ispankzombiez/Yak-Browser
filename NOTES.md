@@ -220,10 +220,21 @@ page) and mounts the defunct game client, which then registered the
 service worker and re-created the zombie cache loop. The app-side fix:
 **`assets/beta-guard.js`**, installed as an always-on document-start
 script (independent of the orientation lock, `installBetaGuard()` with an
-`onPageStarted` eval fallback) that (a) shims `window.matchMedia` so any
-`display-mode` query answers like a normal browser tab and (b) unregisters
-every service worker + deletes every Cache Storage entry on every page
-start. Plus the one-time storage purge (schema 4): native `clearCache` +
+`onPageStarted` eval fallback) that shims `window.matchMedia` so any
+`display-mode` query answers like a normal browser tab — and that is ALL
+it does. **Cache policy (user decision, clarified 2026-10-20 — final):**
+caching is the SITE's call, always: HTTP cache headers honored as-is and
+a service worker the site itself installs is never touched (an earlier
+always-on SW-unregister/caches.delete in the guard was removed for this
+reason — the zombie loop was caused by the display-mode mount, not by
+caching itself). The only cache intervention is a **fresh-install-only**
+first-run wipe (+ `allowBackup="false"` blocking backup restores): a
+fresh install must start empty so no pre-filled cache can show pages
+before the site would, while **upgrades are never wiped** — the player's
+session and cache are kept, and if they lack access *the website*
+blocks them, not the app (`hasPriorLaunchState()` distinguishes the two:
+any prior `session_count`/`last_seen_version` → mark the schema and keep
+everything). Plus the fresh-install storage purge (schema 4): native `clearCache` +
 `removeAllCookies` + `WebStorage.deleteAllData`, then a JS-free
 `https://yakkamon.com/robots.txt` probe (the site **root** still serves
 the alpha shell — never use it as a probe) whose page finish runs
@@ -234,6 +245,23 @@ WebView storage. Verified on the S8: `fullscreen:false browser:true`,
 `bodyClass:""` + `betaNodes:6` + `reactChildren:0`, `swCount:0`,
 localStorage/cookies empty, DOM text = "Thank you for trying the Project
 II beta…", screenshot pixel-correct in portrait.
+
+**Login row + reload semantics (same release):** settings gained a
+"Login" row (key `login`) that hands
+`AppPreferences.requestOpenUrl(LOGIN_URL = "https://yakkamon.com")` to
+MainActivity (flag consumed in `onResume`, https-only) — the sign-in page
+loads in the app WebView, same origin as /play, so a session written
+there is seen by the site's own gate on the next /play load (`$()` →
+`fetch /auth/beta-access` — API verified alive: HTTP 401 on a bad
+token). The site root is a plain static login page (no display-mode
+checks, no React mount, no SW registration), so the beta-guard is inert
+there and the login UI works normally. **"Reload game" always lands on
+/play**: the pending-reload flag is now consumed in `onCreate`, which
+skips `restoreState` and loads `HOME_URL` (before, `recreate()` restored
+whatever page was open — reloading after login stayed on yakkamon.com
+root); `onResume` only peeks (`isReloadRequested`) to trigger the
+rebuild, and the long-press shortcut's raw `webView.reload()` was routed
+through the same flag+recreate path so every entry point agrees.
 
 ## Build / run
 

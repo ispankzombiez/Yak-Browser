@@ -33,7 +33,8 @@ object WhatsNew {
         ),
         "1.0.7" to listOf(
             "Fresh start: the app now always opens to the official Yakkamon page, exactly like visiting in a browser",
-            "Old leftover data from test installs is cleared automatically on first run"
+            "New in settings: a Login button that opens yakkamon.com right inside the app",
+            "Fresh installs always start from a clean slate — no pre-loaded page data"
             // Add the next release here.
         )
     )

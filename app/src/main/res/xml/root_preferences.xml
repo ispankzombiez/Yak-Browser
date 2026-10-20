@@ -27,6 +27,11 @@
         app:summary="Restarts the game page without closing the app"
         app:title="Reload game" />
 
+    <Preference
+        app:key="login"
+        app:summary="Open yakkamon.com to sign in (right here in the app)"
+        app:title="Login" />
+
     <PreferenceCategory app:title="About">
 
         <Preference

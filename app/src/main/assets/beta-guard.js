@@ -2,24 +2,24 @@
  * YakBrowser beta-guard — injected at document start on yakkamon.com
  * origins on every launch, independent of the orientation setting.
  *
- * 1) display-mode: Android WebView reports `fullscreen` for the
- *    display-mode media feature. The site's boot code reads it to detect
- *    "installed app" visitors (fullscreen/standalone) and, when matched,
- *    deletes its public page and mounts the full game client — which no
- *    longer has a backend. A normal browser tab reports `browser`, which
- *    leaves the site's public page in place. Answer like a browser tab so
- *    every visitor lands on the same page everyone else sees.
+ * display-mode: Android WebView reports `fullscreen` for the
+ * display-mode media feature. The site's boot code reads it to detect
+ * "installed app" visitors (fullscreen/standalone) and, when matched,
+ * deletes its public page and mounts the full game client — bypassing
+ * the site's own beta-access gate. A normal browser tab reports
+ * `browser`, which leaves the site's public page in place and lets the
+ * site's gate (session + /auth/beta-access) decide who sees the game.
  *
- * 2) storage hygiene: a service worker registration and its Cache Storage
- *    outlive the HTTP cache and can serve old content forever. This app
- *    never keeps them: unregister everything and delete every cache on
- *    every page start, so every launch reflects what the network serves.
+ * Cache policy (deliberately NOT touched here): caching is the SITE's
+ * call — HTTP cache headers are honored as-is and any service worker the
+ * site itself installs keeps running. The app only guarantees that a
+ * FRESH install starts on an empty cache (one-time first-run purge plus
+ * allowBackup=false); upgrades are never wiped.
  */
 (function () {
   if (window.__yakBetaGuard) return;
   window.__yakBetaGuard = true;
 
-  // --- display-mode: report like a normal browser tab -------------------
   try {
     var nativeMatchMedia = window.matchMedia.bind(window);
     window.matchMedia = function (query) {
@@ -50,21 +50,5 @@
         }
       };
     };
-  } catch (e) {}
-
-  // --- storage hygiene: no service worker, no Cache Storage -------------
-  try {
-    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-      navigator.serviceWorker.getRegistrations().then(function (regs) {
-        regs.forEach(function (r) { try { r.unregister(); } catch (e) {} });
-      }).catch(function () {});
-    }
-  } catch (e) {}
-  try {
-    if (window.caches && caches.keys) {
-      caches.keys().then(function (keys) {
-        keys.forEach(function (k) { try { caches.delete(k); } catch (e) {} });
-      }).catch(function () {});
-    }
   } catch (e) {}
 })();

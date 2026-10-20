@@ -29,9 +29,18 @@ object AppPreferences {
 
     /**
      * One-shot flag set by the "Reload game" actions (settings row or the
-     * long-press shortcut); consumed by the browser screen on resume.
+     * long-press shortcut); the browser screen peeks it on resume (to
+     * rebuild) and consumes it in onCreate, which then always lands on the
+     * game site — never restores whatever page the player had open.
      */
     const val KEY_PENDING_RELOAD = "pending_reload"
+
+    /**
+     * One-shot URL set by the "Login" settings row: the browser screen
+     * loads it in the in-app WebView on resume (same origin as /play, so
+     * the session it writes is seen by the beta-access gate).
+     */
+    const val KEY_PENDING_URL = "pending_url"
 
     /** Number of app starts; drives when the Play rating prompt fires. */
     const val KEY_SESSION_COUNT = "session_count"
@@ -40,8 +49,11 @@ object AppPreferences {
     const val KEY_LAST_SEEN_VERSION = "last_seen_version"
 
     /**
-     * Storage-hygiene schema: bumped when the one-time wipe policy changes so
-     * every existing install runs the new wipe exactly once.
+     * Storage-hygiene schema: records that the fresh-install-only wipe
+     * policy has been evaluated for this install. Bump when the wipe
+     * policy itself changes — note the wipe runs on FRESH INSTALLS only;
+     * upgrades are marked without wiping (the player's session and cache
+     * are theirs to keep; access control belongs to the website).
      */
     const val KEY_STORAGE_SCHEMA = "storage_schema"
 
@@ -62,12 +74,41 @@ object AppPreferences {
             .edit().putBoolean(KEY_PENDING_RELOAD, true).apply()
     }
 
+    /** True while a reload is pending; consumed later, in onCreate. */
+    fun isReloadRequested(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_PENDING_RELOAD, false)
+
     /** True exactly once per request; clears the flag when observed. */
     fun consumeReloadRequest(context: Context): Boolean {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         if (!prefs.getBoolean(KEY_PENDING_RELOAD, false)) return false
         prefs.edit().putBoolean(KEY_PENDING_RELOAD, false).apply()
         return true
+    }
+
+    fun requestOpenUrl(context: Context, url: String) {
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .edit().putString(KEY_PENDING_URL, url).apply()
+    }
+
+    /** The pending URL exactly once; clears it when observed. */
+    fun consumeOpenUrlRequest(context: Context): String? {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val url = prefs.getString(KEY_PENDING_URL, null) ?: return null
+        prefs.edit().putString(KEY_PENDING_URL, null).apply()
+        return url
+    }
+
+    /**
+     * True if any earlier launch left state behind — i.e. this is an
+     * upgrade of an existing install, not a fresh install. Checked before
+     * the first-run session counter runs.
+     */
+    fun hasPriorLaunchState(context: Context): Boolean {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        return prefs.getInt(KEY_SESSION_COUNT, 0) > 0 ||
+            prefs.getString(KEY_LAST_SEEN_VERSION, null) != null
     }
 
     /** Counts one app start and returns the new total. */

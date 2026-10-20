@@ -47,12 +47,25 @@ class SettingsActivity : AppCompatActivity() {
             setPreferencesFromResource(R.xml.root_preferences, rootKey)
 
             // "Reload game": flag the browser screen and close settings; the
-            // game reloads on resume. The flag-based hand-off works from every
-            // entry point (gear, App info row, long-press shortcut), because
-            // MainActivity.onResume consumes it whenever the app comes back.
+            // screen rebuilds on resume and — because the flag is consumed in
+            // onCreate — always lands on the game site (/play), even when the
+            // player had opened the sign-in page. The flag-based hand-off
+            // works from every entry point (gear, App info row, long-press
+            // shortcut).
             findPreference<Preference>(KEY_RELOAD)?.onPreferenceClickListener =
                 Preference.OnPreferenceClickListener {
                     AppPreferences.requestReload(requireContext())
+                    requireActivity().finish()
+                    true
+                }
+
+            // "Login": open the site's sign-in page INSIDE the app WebView
+            // (not a Custom Tab) — the session it writes must land in this
+            // app's storage, same origin as /play, so the beta-access gate
+            // sees it on the next launch.
+            findPreference<Preference>(KEY_LOGIN)?.onPreferenceClickListener =
+                Preference.OnPreferenceClickListener {
+                    AppPreferences.requestOpenUrl(requireContext(), LOGIN_URL)
                     requireActivity().finish()
                     true
                 }
@@ -100,6 +113,8 @@ class SettingsActivity : AppCompatActivity() {
 
         companion object {
             private const val KEY_RELOAD = "reload_game"
+            private const val KEY_LOGIN = "login"
+            private const val LOGIN_URL = "https://yakkamon.com"
             private const val KEY_VERSION = "about_version"
             private const val KEY_PRIVACY = "about_privacy"
             private const val KEY_SUPPORT = "about_support"

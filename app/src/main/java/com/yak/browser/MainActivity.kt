@@ -83,9 +83,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Cached copy of the always-on beta guard: display-mode shim (the site
-     * must see a regular browser tab, not an "installed app") plus storage
-     * hygiene (no service worker / Cache Storage may persist).
+     * Cached copy of the always-on beta guard: shims display-mode so the
+     * site sees a regular browser tab (its own gate then decides who gets
+     * the game). Caching after first run is left entirely to the site —
+     * the guard never touches service workers or caches.
      */
     private val betaGuardScript: String by lazy {
         assets.open(BETA_GUARD_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
@@ -149,8 +150,8 @@ class MainActivity : AppCompatActivity() {
 
         // Always-on site guard: must be registered before ANY load so the
         // first frame of yakkamon.com already answers display-mode like a
-        // normal browser tab (otherwise the site replaces its public page
-        // with the defunct game client) and starts from clean storage.
+        // normal browser tab — otherwise the site replaces its public page
+        // with the defunct game client, bypassing its own access gate.
         installBetaGuard()
 
         // One-time storage wipe (first run after this version): the alpha
@@ -170,7 +171,14 @@ class MainActivity : AppCompatActivity() {
             installOrientationOverride()
         }
 
-        if (savedInstanceState != null) {
+        // "Reload game" (settings row / long-press shortcut): consume the
+        // flag HERE so this creation always lands on the game site (/play)
+        // — even if the player had opened the sign-in page (yakkamon.com)
+        // via the Login row. Saved state would resurrect that page, so a
+        // pending reload skips the restore.
+        val reloadPending = AppPreferences.consumeReloadRequest(this)
+
+        if (savedInstanceState != null && !reloadPending) {
             webView.restoreState(savedInstanceState)
             // A pending purge wins over restored state: the probe load must run.
             if (purgeFirstLoad) webView.loadUrl(PURGE_PROBE_URL)
@@ -179,10 +187,13 @@ class MainActivity : AppCompatActivity() {
 
             // Fresh start: count the session, announce updates once, and
             // schedule the (Play-throttled) rating ask for after the game
-            // has had time to load.
-            val sessions = AppPreferences.incrementSessionCount(this)
-            maybeShowWhatsNew()
-            window.decorView.postDelayed({ maybeAskForReview(sessions) }, REVIEW_DELAY_MS)
+            // has had time to load. A reload recreates with saved state, so
+            // it never reaches this block (it isn't a new session).
+            if (savedInstanceState == null) {
+                val sessions = AppPreferences.incrementSessionCount(this)
+                maybeShowWhatsNew()
+                window.decorView.postDelayed({ maybeAskForReview(sessions) }, REVIEW_DELAY_MS)
+            }
         }
     }
 
@@ -291,20 +302,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * One-time storage wipe so every install lands on the live site exactly
-     * like a first-time visitor: clears the HTTP cache, cookies and DOM
-     * storage on the native side, then loads robots.txt — a JS-free page the
-     * stale service worker's scope cannot poison and where nothing can
-     * re-register — and finishes in-page by unregistering every service
-     * worker and deleting every cache before navigating to the real home
-     * URL. The alpha client never executes, so it never re-registers.
-     * Guarded by a schema number in preferences, so it runs exactly once per
-     * policy version — including on the very first launch of a fresh
-     * install, where it is a harmless no-op that still guarantees the app
-     * never starts on pre-filled storage.
+     * Fresh-install-only storage wipe (policy clarified 2026-10-20):
+     *
+     * - FRESH INSTALL → wipe once, so the app can never start on a
+     *   pre-filled cache that shows pages before the site would (backup
+     *   restore is blocked separately via allowBackup=false): clears the
+     *   HTTP cache, cookies and DOM storage natively, then loads
+     *   robots.txt — a JS-free page where nothing can re-register a
+     *   service worker — and finishes in-page by unregistering every
+     *   service worker and deleting every cache before navigating to the
+     *   real home URL.
+     * - UPGRADE → never wipe. The player may already be signed in and
+     *   hold beta access; their session and cache are theirs to keep.
+     *   Access control belongs to the website (its own session +
+     *   /auth/beta-access gate), not this app — the site blocks whoever
+     *   it blocks; we just honor its caching either way.
+     *
+     * Guarded by a schema number so the policy is evaluated exactly once
+     * per policy version (upgrades get marked without wiping).
      */
     private fun runStoragePurgeIfNeeded() {
         if (AppPreferences.storageSchema(this) == STORAGE_SCHEMA) return
+        // Upgrade of an existing install: mark the policy as evaluated and
+        // keep everything (session, cookies, cache).
+        if (AppPreferences.hasPriorLaunchState(this)) {
+            AppPreferences.setStorageSchema(this, STORAGE_SCHEMA)
+            return
+        }
         webView.clearCache(true)
         CookieManager.getInstance().removeAllCookies(null)
         CookieManager.getInstance().flush()
@@ -466,9 +490,22 @@ class MainActivity : AppCompatActivity() {
         applySettingsAccess()
 
         // "Reload game" (settings row / long-press shortcut): rebuild the
-        // browser screen for a clean reload with the spoof freshly installed.
-        if (AppPreferences.consumeReloadRequest(this)) {
+        // screen; onCreate consumes the flag and lands on /play regardless
+        // of what page is currently open.
+        if (AppPreferences.isReloadRequested(this)) {
             recreate()
+        }
+
+        // "Login" (settings row): open the site's sign-in page here in the
+        // app. The gate on /play shares this storage (same origin), so once
+        // a session with beta access exists, the next launch boots the game
+        // through the site's own alpha testing check. Checked AFTER the
+        // reload request so a pending login survives a recreate() above.
+        AppPreferences.consumeOpenUrlRequest(this)?.let { url ->
+            if (url.startsWith("https://")) {
+                errorPanel.visibility = View.GONE
+                webView.loadUrl(url)
+            }
         }
     }
 
@@ -489,9 +526,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // Long-press "Reload" shortcut while the app is already running.
+        // Long-press "Reload" shortcut while the app is already running:
+        // same path as the settings row — rebuild so the landing page is
+        // always /play, never whatever page (e.g. the sign-in page) is open.
         if (intent.action == ACTION_RELOAD) {
-            webView.reload()
+            AppPreferences.requestReload(this)
+            recreate()
         }
     }
 
@@ -606,9 +646,12 @@ class MainActivity : AppCompatActivity() {
         """
 
         /**
-         * Bump when the wipe policy changes; each install runs it once.
-         * 3: HTTP cache + cookies + DOM storage wipe via robots.txt probe.
-         * 4: same wipe, now paired with the always-on display-mode guard.
+         * Marks that the wipe policy has been evaluated (exactly once per
+         * policy version). The wipe itself runs on FRESH INSTALLS ONLY —
+         * upgrades are marked without wiping, keeping the player's session
+         * and cache (access control belongs to the website).
+         * 4: fresh-install wipe (HTTP cache + cookies + DOM storage via the
+         *     robots.txt probe) + always-on display-mode guard.
          */
         private const val STORAGE_SCHEMA = 4
     }
