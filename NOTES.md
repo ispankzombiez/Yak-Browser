@@ -183,8 +183,13 @@ sticks (`document.contains(modal.__yakStack.wrapper)`). Section 5b
 has **no portrait design for some landscape rows** — Dojo challenge cards
 crush their text to ~50px (sprite + button eat the row), so cards get
 `flex-wrap` + full-width + description on its own line; header tab strips
-get their own row (title + close share the top) because each tab computed
-to ~43px while "Achievements" needs ~63px (pills overlapped at 360).
+get their own row because each tab computed to ~43px while "Achievements"
+needs ~63px (pills overlapped at 360). Header result: title top-left,
+close X pinned top-right (`margin-left:auto`), tab pills in a full-width
+row below. Gotcha baked into a code comment: the close wrapper's token
+is `mr-1.5` and a `.mr-1.5` class selector is a CSS **parse error** (a
+dot mid-identifier silently kills the whole rule) — use
+`[class*="mr-1.5"]`.
 Result on the S8 test device (360×740, DPR 3): all five windows
 `mark=native scale=1`, minTap 12.6–20px, minFont 8–9.5px (was
 `s=0.550`, 6.9px, 4.4px). Everything verified per-window with CDP
