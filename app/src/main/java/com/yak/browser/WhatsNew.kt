@@ -32,9 +32,12 @@ object WhatsNew {
             "Close button moved to the top-right corner"
         ),
         "1.0.7" to listOf(
-            "Fresh start: the app now always opens to the official Yakkamon page, exactly like visiting in a browser",
+            "Fresh start: the app now always opens to the official Yakkamon page, exactly like visiting in a browser"
+        ),
+        "1.0.8" to listOf(
             "New in settings: a Login button that opens yakkamon.com right inside the app",
-            "Fresh installs always start from a clean slate — no pre-loaded page data"
+            "Reload game now always brings you back to the game page",
+            "Fresh installs start clean — updates keep your login and cache"
             // Add the next release here.
         )
     )

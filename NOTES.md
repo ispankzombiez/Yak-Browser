@@ -263,6 +263,14 @@ root); `onResume` only peeks (`isReloadRequested`) to trigger the
 rebuild, and the long-press shortcut's raw `webView.reload()` was routed
 through the same flag+recreate path so every entry point agrees.
 
+**Status (2026-10-20, later): v1.0.8 (versionCode 9) — the Play release.**
+v1.0.7 (versionCode 8) was never published (no GitHub release exists), so
+everything since v1.0.6 ships as 1.0.8: display-mode guard + Login row +
+reload-to-/play + fresh-install-only purge + site-owned caching, one
+build. WhatsNew split accordingly: the "official Yakkamon page" bullet
+stays under 1.0.7, the Login/reload/clean-slate bullets live under 1.0.8
+— a 1.0.6 updater sees all four bullets, each exactly once.
+
 ## Build / run
 
 ```powershell
