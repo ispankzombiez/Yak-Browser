@@ -11,11 +11,13 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
+import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -52,6 +54,16 @@ class MainActivity : AppCompatActivity() {
     /** Set when the document-start injection succeeded; enables the fallback path. */
     private var documentStartInstalled = false
 
+    /** Set when the always-on beta-guard document-start script is installed. */
+    private var betaGuardInstalled = false
+
+    /**
+     * True during the first load of a storage-purge install: that load may
+     * still render from the (just-cleared) stale cache, so it is reloaded
+     * once from the network, and its injected script also clears DOM storage.
+     */
+    private var purgeFirstLoad = false
+
     /**
      * True while an orientation lock is active: controls both the activity
      * orientation and whether the landscape spoof is injected at all. Captured
@@ -68,6 +80,15 @@ class MainActivity : AppCompatActivity() {
     /** Cached copy of the orientation override script (injected per navigation as fallback). */
     private val orientationScript: String by lazy {
         assets.open(ORIENTATION_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    }
+
+    /**
+     * Cached copy of the always-on beta guard: display-mode shim (the site
+     * must see a regular browser tab, not an "installed app") plus storage
+     * hygiene (no service worker / Cache Storage may persist).
+     */
+    private val betaGuardScript: String by lazy {
+        assets.open(BETA_GUARD_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -126,6 +147,19 @@ class MainActivity : AppCompatActivity() {
 
         configureWebView()
 
+        // Always-on site guard: must be registered before ANY load so the
+        // first frame of yakkamon.com already answers display-mode like a
+        // normal browser tab (otherwise the site replaces its public page
+        // with the defunct game client) and starts from clean storage.
+        installBetaGuard()
+
+        // One-time storage wipe (first run after this version): the alpha
+        // test left a service worker + cache behind on testers' devices that
+        // kept serving the old client from storage. Run it BEFORE the
+        // orientation script is installed so the first load also carries the
+        // DOM-storage clear.
+        runStoragePurgeIfNeeded()
+
         // Apply the saved orientation setting, then register the document-start
         // spoof BEFORE any loadUrl() call, so the very first frame of
         // yakkamon.com already sees a landscape viewport. When the lock is off,
@@ -138,8 +172,10 @@ class MainActivity : AppCompatActivity() {
 
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState)
+            // A pending purge wins over restored state: the probe load must run.
+            if (purgeFirstLoad) webView.loadUrl(PURGE_PROBE_URL)
         } else {
-            webView.loadUrl(HOME_URL)
+            webView.loadUrl(if (purgeFirstLoad) PURGE_PROBE_URL else HOME_URL)
 
             // Fresh start: count the session, announce updates once, and
             // schedule the (Play-throttled) rating ask for after the game
@@ -174,9 +210,25 @@ class MainActivity : AppCompatActivity() {
                 errorPanel.visibility = View.GONE
                 // Fallback injection: if the document-start API wasn't available
                 // (very old WebView provider), inject as early as we can. The
-                // script is idempotent, so this is harmless otherwise.
+                // scripts are idempotent, so this is harmless otherwise.
+                if (!betaGuardInstalled) {
+                    view?.evaluateJavascript(betaGuardEffective(), null)
+                }
                 if (spoofDesired && !documentStartInstalled) {
-                    view?.evaluateJavascript(orientationScript, null)
+                    view?.evaluateJavascript(effectiveScript(), null)
+                }
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                if (purgeFirstLoad) {
+                    // The probe page (outside the stale service worker's
+                    // scope) has loaded from the network: finish the purge
+                    // in-page — unregister every service worker, delete every
+                    // cache, wait for both to settle, then navigate to the
+                    // home URL, which now comes straight from the network.
+                    purgeFirstLoad = false
+                    view?.evaluateJavascript(PURGE_FINALIZE, null)
                 }
             }
 
@@ -239,6 +291,71 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * One-time storage wipe so every install lands on the live site exactly
+     * like a first-time visitor: clears the HTTP cache, cookies and DOM
+     * storage on the native side, then loads robots.txt — a JS-free page the
+     * stale service worker's scope cannot poison and where nothing can
+     * re-register — and finishes in-page by unregistering every service
+     * worker and deleting every cache before navigating to the real home
+     * URL. The alpha client never executes, so it never re-registers.
+     * Guarded by a schema number in preferences, so it runs exactly once per
+     * policy version — including on the very first launch of a fresh
+     * install, where it is a harmless no-op that still guarantees the app
+     * never starts on pre-filled storage.
+     */
+    private fun runStoragePurgeIfNeeded() {
+        if (AppPreferences.storageSchema(this) == STORAGE_SCHEMA) return
+        webView.clearCache(true)
+        CookieManager.getInstance().removeAllCookies(null)
+        CookieManager.getInstance().flush()
+        WebStorage.getInstance().deleteAllData()
+        purgeFirstLoad = true
+        AppPreferences.setStorageSchema(this, STORAGE_SCHEMA)
+    }
+
+    /**
+     * The beta-guard script actually injected: the always-on guard, plus —
+     * while a purge's first load is pending — a DOM-storage clear (same
+     * origin as the home URL, so it wipes the game's saved session too).
+     */
+    private fun betaGuardEffective(): String = if (purgeFirstLoad) {
+        "$FIRST_RUN_WIPE\n$betaGuardScript"
+    } else {
+        betaGuardScript
+    }
+
+    /**
+     * The orientation script actually injected at document start (the
+     * landscape spoof; the storage/display-mode concerns live in the
+     * beta guard, which is installed for every launch).
+     */
+    private fun effectiveScript(): String = orientationScript
+
+    /**
+     * Registers the always-on beta guard as a document-start script for
+     * yakkamon.com frames — runs before any of the page's own JS, on every
+     * launch, with or without the orientation lock. Falls back to evaluating
+     * it in onPageStarted when the provider doesn't support document-start
+     * scripts.
+     */
+    private fun installBetaGuard() {
+        betaGuardInstalled = try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                WebViewCompat.addDocumentStartJavaScript(
+                    webView,
+                    betaGuardEffective(),
+                    setOf("https://yakkamon.com", "https://*.yakkamon.com")
+                )
+                true
+            } else {
+                false
+            }
+        } catch (t: Throwable) {
+            false
+        }
+    }
+
+    /**
      * Injects the landscape override into yakkamon.com frames before any of the
      * page's own JS runs. Falls back to evaluating the script in onPageStarted
      * when the WebView provider doesn't support document-start scripts.
@@ -250,7 +367,7 @@ class MainActivity : AppCompatActivity() {
             if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 WebViewCompat.addDocumentStartJavaScript(
                     webView,
-                    orientationScript,
+                    effectiveScript(),
                     setOf("https://yakkamon.com", "https://*.yakkamon.com")
                 )
                 true
@@ -446,9 +563,53 @@ class MainActivity : AppCompatActivity() {
         private const val HOME_URL = "https://yakkamon.com/play"
         private const val YAKKAMON_HOST = "yakkamon.com"
         private const val ORIENTATION_SCRIPT = "orientation-override.js"
+        private const val BETA_GUARD_SCRIPT = "beta-guard.js"
         private const val ACTION_RELOAD = "com.yak.browser.action.RELOAD"
         private const val REVIEW_FIRST_SESSION = 5
         private const val REVIEW_REPEAT_EVERY = 10
         private const val REVIEW_DELAY_MS = 8_000L
+
+        /** Runs once during a purge's first load, before the page's own JS. */
+        private const val FIRST_RUN_WIPE = "try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}"
+
+        /**
+         * First load of a purge goes to robots.txt: same origin (so our
+         * injected script and in-page eval apply), but a static text file —
+         * it can execute no JS, so nothing (least of all the old alpha
+         * client, which the site root still serves) can re-register a
+         * service worker while the cleanup runs. The site ROOT is NOT safe
+         * as a probe: it still serves the alpha shell.
+         */
+        private const val PURGE_PROBE_URL = "https://yakkamon.com/robots.txt"
+
+        /**
+         * Runs on the probe page to finish the purge deterministically:
+         * unregister every service worker, delete every Cache Storage entry,
+         * wait for both to settle, then navigate to the home URL — which now
+         * (no registration left) comes straight from the network.
+         */
+        private const val PURGE_FINALIZE = """
+            (function () {
+              var go = function () { location.replace('https://yakkamon.com/play'); };
+              var a = (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
+                ? navigator.serviceWorker.getRegistrations().then(function (rs) {
+                    return Promise.all(rs.map(function (r) { return r.unregister(); }));
+                  }).catch(function () {})
+                : Promise.resolve();
+              var b = (window.caches && caches.keys)
+                ? caches.keys().then(function (ks) {
+                    return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+                  }).catch(function () {})
+                : Promise.resolve();
+              Promise.all([a, b]).then(go, go);
+            })();
+        """
+
+        /**
+         * Bump when the wipe policy changes; each install runs it once.
+         * 3: HTTP cache + cookies + DOM storage wipe via robots.txt probe.
+         * 4: same wipe, now paired with the always-on display-mode guard.
+         */
+        private const val STORAGE_SCHEMA = 4
     }
 }

@@ -39,6 +39,12 @@ object AppPreferences {
     /** versionName last shown in the What's New dialog. */
     const val KEY_LAST_SEEN_VERSION = "last_seen_version"
 
+    /**
+     * Storage-hygiene schema: bumped when the one-time wipe policy changes so
+     * every existing install runs the new wipe exactly once.
+     */
+    const val KEY_STORAGE_SCHEMA = "storage_schema"
+
     fun isOrientationLockEnabled(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
             .getBoolean(KEY_ORIENTATION_LOCK, true)
@@ -79,5 +85,14 @@ object AppPreferences {
     fun setLastSeenVersion(context: Context, version: String) {
         PreferenceManager.getDefaultSharedPreferences(context)
             .edit().putString(KEY_LAST_SEEN_VERSION, version).apply()
+    }
+
+    fun storageSchema(context: Context): Int =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getInt(KEY_STORAGE_SCHEMA, 0)
+
+    fun setStorageSchema(context: Context, schema: Int) {
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .edit().putInt(KEY_STORAGE_SCHEMA, schema).apply()
     }
 }

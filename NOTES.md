@@ -204,6 +204,37 @@ in-app "new version ready" dialog (small dialog → `noscale` ✓, accept it
 to reload the game — a fresh load also picks up new game code, which is
 why the S8's game build differed from the older device's).
 
+**Status (2026-10-20): v1.0.7 (versionCode 8) — clean-slate launch (the
+app always lands on the site's public "Thank you for trying the Project II
+beta" page).** Full root-cause chain of the returning alpha, established
+with CDP on the S8 plus raw fetches from a PC:
+(1) the site's `/play` HTML is byte-identical everywhere (sha256
+`11562017…`, 25081 B) — even the service worker's copy matches the live
+network bytes; (2) the boot script `assets/play-BHDsZFFI.js` decides:
+`I() || x() ? E() : (poke + $())` where `I()` is always false (hardcoded
+non-empty API URL) and `x()` = `matchMedia('(display-mode:
+fullscreen|standalone)')`; (3) **Android WebView reports `display-mode:
+fullscreen = true`** (Chrome tabs report `browser`), so every in-app visit
+took `E()` — which deletes all `[data-beta]` nodes (the entire thanks
+page) and mounts the defunct game client, which then registered the
+service worker and re-created the zombie cache loop. The app-side fix:
+**`assets/beta-guard.js`**, installed as an always-on document-start
+script (independent of the orientation lock, `installBetaGuard()` with an
+`onPageStarted` eval fallback) that (a) shims `window.matchMedia` so any
+`display-mode` query answers like a normal browser tab and (b) unregisters
+every service worker + deletes every Cache Storage entry on every page
+start. Plus the one-time storage purge (schema 4): native `clearCache` +
+`removeAllCookies` + `WebStorage.deleteAllData`, then a JS-free
+`https://yakkamon.com/robots.txt` probe (the site **root** still serves
+the alpha shell — never use it as a probe) whose page finish runs
+`PURGE_FINALIZE` (await unregister + cache deletes → `location.replace`
+home). Manifest got `android:allowBackup="false"` +
+`fullBackupContent="false"` so a restore can never re-introduce filled
+WebView storage. Verified on the S8: `fullscreen:false browser:true`,
+`bodyClass:""` + `betaNodes:6` + `reactChildren:0`, `swCount:0`,
+localStorage/cookies empty, DOM text = "Thank you for trying the Project
+II beta…", screenshot pixel-correct in portrait.
+
 ## Build / run
 
 ```powershell

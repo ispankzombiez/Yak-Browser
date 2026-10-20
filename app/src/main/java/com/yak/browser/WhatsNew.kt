@@ -30,6 +30,10 @@ object WhatsNew {
             "Every game window now renders at full size in portrait — no more shrunken text",
             "Fixed squished Dojo cards and overlapping tab buttons",
             "Close button moved to the top-right corner"
+        ),
+        "1.0.7" to listOf(
+            "Fresh start: the app now always opens to the official Yakkamon page, exactly like visiting in a browser",
+            "Old leftover data from test installs is cleared automatically on first run"
             // Add the next release here.
         )
     )
