@@ -22,7 +22,9 @@ android {
 
     defaultConfig {
         applicationId = "com.yak.browser"
-        minSdk = 26
+        // 24 (Android 7.0) — oldest devices we test on are the Note 5 and
+        // Galaxy S7 on stock Android 7; app code uses no API > 24 paths.
+        minSdk = 24
         targetSdk = 36
         versionCode = 9
         versionName = "1.0.8"

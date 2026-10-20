@@ -271,6 +271,20 @@ build. WhatsNew split accordingly: the "official Yakkamon page" bullet
 stays under 1.0.7, the Login/reload/clean-slate bullets live under 1.0.8
 — a 1.0.6 updater sees all four bullets, each exactly once.
 
+**Same day, later: minSdk 26 → 24 (Android 7.0).** Two more test devices
+(Verizon SM-N920V Note 5 and SM-G930V S7) run stock Android 7.0 / API 24
+and reject minSdk-26 builds with `INSTALL_FAILED_OLDER_SDK`. Audit was
+clean: no API>24 usage anywhere in app source (no `Build.VERSION`,
+`java.time`, or notification channels; the `onRenderProcessGone` override
+is dead-but-harmless pre-26 — the framework never dispatches it — and
+`setWebContentsDebuggingEnabled` is API 19); every dependency declares
+minSdk ≤21, so the manifest merger passes. 1.0.8 (VC9) AAB rebuilt with
+minSdk 24 and verified visually on all three phones — thanks page,
+gear, parade, portrait layout correct on 7.0, 9, and the S24's 16.
+Caveat: those two 2017 phones carry WebView 61/63 (never updated since
+2017); install Play's Android System WebView update before judging the
+site's own modern JS on them — the server-rendered thanks page is fine.
+
 ## Build / run
 
 ```powershell
