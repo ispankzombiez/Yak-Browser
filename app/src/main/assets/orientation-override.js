@@ -207,19 +207,25 @@
     update();
   })();
 
-  /* 5. Portrait modal fit: wide windows (Workshop, Shop, Squad, Quests...) --- */
+  /* 5. Portrait-native windows: stack columns, reveal the hidden pane ------- */
   // These windows are two-column layouts designed for landscape widths. Below
   // the game's `sm` breakpoint (640 CSS px) the right-hand detail/action
-  // column is literally `hidden ... sm:flex` — gone — and the rest of the
-  // window is laid out to overflow the portrait viewport. Portrait only, each
-  // open modal is handled once (a data attribute marks it; React unmounts
-  // modals when they close, so the marker disappears with them):
+  // column is literally `hidden ... sm:flex` — gone — and what remains is a
+  // narrow list floating over the map. Portrait only, each open modal is
+  // handled once (a data attribute marks it; React unmounts modals when they
+  // close, so the marker disappears with them):
   //
-  //   a) force the landscape-only detail column visible, and
-  //   b) lay the window out at the game's own 640 px design width (where both
-  //      columns render at natural size), then scale it into the viewport
-  //      with a transform. Transforms keep hit-testing aligned, so every
-  //      button stays exactly where it looks.
+  //   a) re-flow the window the way the game would if it had been built for
+  //      phones: stack the two columns vertically and reveal the hidden
+  //      detail pane. Everything then renders at the game's own 100% size —
+  //      no scaling, native touch targets, native text — using the full
+  //      portrait height. Long stacks scroll inside the window instead of
+  //      clipping (overflow-x stays hidden so nothing spills sideways).
+  //   b) measure: if even the stacked layout overflows the portrait width,
+  //      revert and use the old fallback — lay the window out at the game's
+  //      own 640 px design width (where both columns render at natural size)
+  //      and scale it into the viewport with a transform. Transforms keep
+  //      hit-testing aligned, so every button stays exactly where it looks.
   //
   // Small dialogs (Welcome Back, confirmations) measure within the viewport
   // and are left untouched.
@@ -227,6 +233,43 @@
     var FIT_ATTR = 'data-yak-fit';
     var DESIGN_W = 640; // the game's sm breakpoint: both columns, natural size
     var FIT_MARGIN = 4; // px of slack before a window counts as overflowing
+
+    // Stacks the wrapper's columns, reveals the hidden detail pane and lets
+    // the window scroll internally. Refs to everything touched are kept on
+    // the modal so the fallback can revert precisely (never removing styles
+    // the game itself may own).
+    function applyPortraitLayout(modal) {
+      var wrapper = modal.querySelector('[class*="max-w-4xl"]');
+      if (!wrapper) return false;
+      var hidden = null;
+      var cols = wrapper.children;
+      for (var i = 0; i < cols.length; i++) {
+        if (getComputedStyle(cols[i]).display === 'none') { hidden = cols[i]; break; }
+      }
+      if (!hidden) return false; // nothing hidden — nothing to re-flow
+      var list = null;
+      for (var j = 0; j < cols.length; j++) {
+        if (cols[j] !== hidden) { list = cols[j]; break; }
+      }
+      hidden.style.setProperty('display', 'flex', 'important');
+      wrapper.style.setProperty('flex-direction', 'column', 'important');
+      if (list) list.style.setProperty('width', '100%', 'important');
+      modal.style.setProperty('overflow-y', 'auto', 'important');
+      modal.style.setProperty('overflow-x', 'hidden', 'important');
+      modal.__yakStack = { wrapper: wrapper, hidden: hidden, list: list };
+      return true;
+    }
+
+    function revertPortraitLayout(modal) {
+      var s = modal.__yakStack;
+      if (!s) return;
+      s.wrapper.style.removeProperty('flex-direction');
+      s.hidden.style.removeProperty('display');
+      if (s.list) s.list.style.removeProperty('width');
+      modal.style.removeProperty('overflow-y');
+      modal.style.removeProperty('overflow-x');
+      modal.__yakStack = null;
+    }
 
     function fitModals() {
       try {
@@ -250,17 +293,17 @@
           for (var k = 0; k < modals.length; k++) {
             var modal = modals[k];
             if (getComputedStyle(modal).display === 'none') continue;
+            // React sometimes replaces the very nodes we styled (data swaps);
+            // the mark would stick while our layout silently reverts — detect
+            // the detached stack and run the whole flow again.
+            if (modal.getAttribute(FIT_ATTR) === 'native' && modal.__yakStack &&
+                !document.contains(modal.__yakStack.wrapper)) {
+              modal.removeAttribute(FIT_ATTR);
+            }
             if (modal.hasAttribute(FIT_ATTR)) continue;
 
-            /* a) reveal the landscape-only detail column -------------------- */
-            var cols = modal.querySelectorAll(
-              '[class*="max-w-4xl"] > [class*="sm:flex"]'
-            );
-            for (var c = 0; c < cols.length; c++) {
-              if (getComputedStyle(cols[c]).display === 'none') {
-                cols[c].style.setProperty('display', 'flex', 'important');
-              }
-            }
+            /* a) portrait-native: stack the columns, reveal the detail pane */
+            var applied = applyPortraitLayout(modal);
 
             /* b) measure the natural content width -------------------------- */
             var maxRight = 0;
@@ -272,13 +315,38 @@
               if (ar.width > 0 && ar.right > maxRight) maxRight = ar.right;
             }
             var mrect = modal.getBoundingClientRect();
-            var naturalW = Math.max(maxRight, mrect.right);
-            if (naturalW <= vw - FIT_MARGIN) {
-              modal.setAttribute(FIT_ATTR, 'noscale'); // fits as-is
+            var fullBleed = mrect.width >= vw - 1 || mrect.height >= vh - 1;
+            // Content may end exactly on the screen edge — a full-bleed
+            // shell's content column does — so only a real spill past the
+            // viewport counts as overflow. A plain card keeps the old rule
+            // and wants FIT_MARGIN of breathing room as well. The height of
+            // a full-bleed shell is handled by the scroll set up in
+            // applyPortraitLayout, or by the game's own scroller.
+            var fits = maxRight <= vw + FIT_MARGIN;
+            if (mrect.width < vw - 1) {
+              fits = fits && mrect.right <= vw - FIT_MARGIN;
+            }
+            if (fits) {
+              // Stacked windows and full-bleed mobile shells are the game's
+              // own portrait layout: section 6 leaves them alone. Plain
+              // cards keep the legacy 'noscale' mark so section 6 still
+              // re-checks their height.
+              modal.setAttribute(
+                FIT_ATTR, (applied || fullBleed) ? 'native' : 'noscale'
+              );
               continue;
             }
 
-            /* c) design-width layout + scale-to-fit ------------------------- */
+            /* c) stacked layout still overflows: revert, old fallback ------- */
+            if (applied) revertPortraitLayout(modal);
+            var cols = modal.querySelectorAll(
+              '[class*="max-w-4xl"] > [class*="sm:flex"]'
+            );
+            for (var c = 0; c < cols.length; c++) {
+              if (getComputedStyle(cols[c]).display === 'none') {
+                cols[c].style.setProperty('display', 'flex', 'important');
+              }
+            }
             modal.style.setProperty('width', DESIGN_W + 'px', 'important');
             var naturalH = modal.getBoundingClientRect().height;
             var scale = (vw - 8) / DESIGN_W;
@@ -316,15 +384,73 @@
     fitModals();
   })();
 
+  /* 5b. Narrow-portrait polish for rows sized for the landscape canvas ----- */
+  // Some windows (Dojo's challenge cards) lay content out as a horizontal
+  // row sized for the game's 640px canvas — at phone widths the middle text
+  // gets crushed between a fixed-size sprite and a fixed-size button (down
+  // to ~50px, one word per line). These rules are scoped to the game's own
+  // `sm` breakpoint (its portrait range) and only target ROW-direction
+  // cards, letting the description wrap onto its own full-width line.
+  // Because the rules key off the game's Tailwind utility classes, a game
+  // update that renames them simply drops the polish — the layout falls
+  // back to the game's own rendering, never worse than unstyled.
+  (function () {
+    if (document.getElementById('yak-portrait-polish')) return;
+    var st = document.createElement('style');
+    st.id = 'yak-portrait-polish';
+    st.textContent = [
+      '@media (max-width: 639.98px) {',
+      '  div.flex:not([class*="flex-col"])',
+      '    [class*="rounded-2xl"][class*="bg-black/30"] {',
+      '    flex-wrap: wrap !important;',
+      '    width: 100% !important;',
+      '  }',
+      '  div.flex:not([class*="flex-col"])',
+      '    [class*="rounded-2xl"][class*="bg-black/30"]',
+      '    > div[class*="flex-1"] {',
+      '    min-width: 100% !important;',
+      '  }',
+      '  div.flex:not([class*="flex-col"])',
+      '    [class*="rounded-2xl"][class*="bg-black/30"] > button {',
+      '    margin-left: auto !important;',
+      '  }',
+      /* Tab strips (Squad/Shop/Quests/News headers) are sized for a 640px
+         canvas: at phone widths each tab gets ~43px while "Achievements"
+         needs ~63px, so the pills overlap. Title + close share the top
+         row and the tab strip gets its own full-width row below. */
+      '  div[class*="pr-[max(1.5rem"]',
+      '    > div.flex.shrink-0.items-center.pb-3 {',
+      '    flex-wrap: wrap !important;',
+      '  }',
+      '  div[class*="pr-[max(1.5rem"]',
+      '    > div.flex.shrink-0.items-center.pb-3',
+      '    > div.min-w-0.justify-center {',
+      '    min-width: 100% !important;',
+      '    order: 3 !important;',
+      '  }',
+      // note: attribute form — the token is "mr-1.5", and a `.mr-1.5`
+      // class selector is a CSS parse error (dot mid-identifier).
+      '  div[class*="pr-[max(1.5rem"]',
+      '    > div.flex.shrink-0.items-center.pb-3',
+      '    > div[class*="mr-1.5"] {',
+      '    margin-left: auto !important;',
+      '  }',
+      '}'
+    ].join('\n');
+    (document.head || document.documentElement).appendChild(st);
+  })();
+
   /* 6. Generic window safety net: any *other* window that overflows --------- */
-  // Section 5 handles the known window shapes. The game will keep shipping new
-  // ones (events, trading, ...), so this last-resort pass catches anything it
-  // doesn't claim: a full-viewport backdrop whose visible box is taller or
-  // wider than the portrait screen gets centred and scaled down to fit.
-  // Boxes that already fit, and everything section 5 actually scaled, are left
-  // alone — so the known windows keep their pixel-perfect treatment. One
-  // refinement: section 5's 'noscale' mark only means "width fits", so those
-  // are re-examined here for height overflow, which section 5 never measures.
+  // Section 5 claims every window it re-flows ('native': stacked two-column
+  // layouts and full-bleed mobile shells — those scroll internally and are
+  // left completely alone here) or scaled ('s=...'). The game will keep
+  // shipping new window shapes (events, trading, ...), so this last-resort
+  // pass catches anything section 5 didn't claim: a full-viewport backdrop
+  // whose visible box is taller or wider than the portrait screen gets
+  // centred and scaled down to fit. Boxes that already fit are left alone.
+  // One refinement: section 5's 'noscale' mark only means "width fits", so
+  // plain cards with that mark are re-examined here for height overflow,
+  // which section 5 never measures.
   (function () {
     var FIT_ATTR = 'data-yak-fit';
     var FIT_MARGIN = 4;
@@ -352,7 +478,7 @@
             var modal = modals[k];
             if (getComputedStyle(modal).display === 'none') continue;
             var mark = modal.getAttribute(FIT_ATTR);
-            if (mark && mark !== 'noscale') continue; // section 5 scaled it / mine
+            if (mark && mark !== 'noscale') continue; // section 5 owns it (native/scaled)
 
             var mrect = modal.getBoundingClientRect();
             if (mrect.width <= vw - FIT_MARGIN && mrect.height <= vh - FIT_MARGIN) {

@@ -164,6 +164,36 @@ Testing trick: `run-as com.yak.browser.debug sed -i` the prefs file's
 `last_seen_version` back a version, force-stop, relaunch — the dialog
 appears, then verify it does not reappear on the next launch.
 
+**Status (2026-10-19, latest): v1.0.6 (versionCode 7) — portrait-native
+window rewrite.** Section 5 of `orientation-override.js` no longer forces
+the 640px design width + scale for known windows. New flow per modal:
+(1) **stack** — if the shell has the game's `max-w-4xl` wrapper with a
+`hidden … sm:flex` detail pane, set `flex-direction: column` on the wrapper,
+reveal the pane at `display:flex`, pin the surviving column to `width:100%`
+and give the modal `overflow-y:auto` (refs stored on `modal.__yakStack`);
+(2) **measure** — content may end exactly on the screen edge (a full-bleed
+shell's content column does: right == vw); only real spill past
+`vw + 4px` counts, cards keep the old `vw - 4` breathing rule; (3) if it
+fits → mark `native` (stacked windows **and** full-bleed mobile shells —
+section 6 leaves `native` alone); if not → revert the stack exactly and
+fall back to the old 640-width + scale path (mark `s=…`). A guard
+re-runs the flow when React replaces our styled node while the mark
+sticks (`document.contains(modal.__yakStack.wrapper)`). Section 5b
+(`@media (max-width: 639.98px)`, `#yak-portrait-polish` style): the game
+has **no portrait design for some landscape rows** — Dojo challenge cards
+crush their text to ~50px (sprite + button eat the row), so cards get
+`flex-wrap` + full-width + description on its own line; header tab strips
+get their own row (title + close share the top) because each tab computed
+to ~43px while "Achievements" needs ~63px (pills overlapped at 360).
+Result on the S8 test device (360×740, DPR 3): all five windows
+`mark=native scale=1`, minTap 12.6–20px, minFont 8–9.5px (was
+`s=0.550`, 6.9px, 4.4px). Everything verified per-window with CDP
+inventory (`data-yak-fit` mark + rect + min tap/font). Notes: Trade does
+not respond to any click (likely API-gated, API down); the game ships an
+in-app "new version ready" dialog (small dialog → `noscale` ✓, accept it
+to reload the game — a fresh load also picks up new game code, which is
+why the S8's game build differed from the older device's).
+
 ## Build / run
 
 ```powershell

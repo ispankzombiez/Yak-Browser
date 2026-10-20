@@ -25,6 +25,11 @@ object WhatsNew {
         "1.0.5" to listOf(
             "This What’s New dialog — release notes after every update",
             "Occasional Play rating prompt after a few play sessions"
+        ),
+        "1.0.6" to listOf(
+            "Every game window now renders at full size in portrait — no more shrunken text",
+            "Fixed squished Dojo cards and overlapping tab buttons",
+            "Close button moved to the top-right corner"
             // Add the next release here.
         )
     )
