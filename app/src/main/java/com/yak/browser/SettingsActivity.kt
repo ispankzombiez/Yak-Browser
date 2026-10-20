@@ -103,7 +103,7 @@ class SettingsActivity : AppCompatActivity() {
             private const val KEY_VERSION = "about_version"
             private const val KEY_PRIVACY = "about_privacy"
             private const val KEY_SUPPORT = "about_support"
-            private const val PRIVACY_URL = "https://ispankzombiez.github.io/Yak-Browser/"
+            private const val PRIVACY_URL = "https://ispankzombiez.github.io/Yak-Browser/privacy.html"
             private const val SUPPORT_EMAIL = "iSPANKapps@gmail.com"
         }
     }

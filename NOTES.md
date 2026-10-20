@@ -190,6 +190,11 @@ row below. Gotcha baked into a code comment: the close wrapper's token
 is `mr-1.5` and a `.mr-1.5` class selector is a CSS **parse error** (a
 dot mid-identifier silently kills the whole rule) — use
 `[class*="mr-1.5"]`.
+**Privacy policy**: canonical page is `docs/privacy.html` (linked from the
+About section via `PRIVACY_URL` in `SettingsActivity.kt`, and the Play
+Console data-safety form should use the same URL);
+`docs/index.html` still carries a copy of the policy text — update both
+if the policy ever changes.
 Result on the S8 test device (360×740, DPR 3): all five windows
 `mark=native scale=1`, minTap 12.6–20px, minFont 8–9.5px (was
 `s=0.550`, 6.9px, 4.4px). Everything verified per-window with CDP
