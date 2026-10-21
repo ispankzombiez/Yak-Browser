@@ -58,6 +58,13 @@ class MainActivity : AppCompatActivity() {
     private var betaGuardInstalled = false
 
     /**
+     * The exact portrait-state script last registered as document-start
+     * (null = none). Compared by [installPortraitState] so the state is
+     * re-registered only when the toggles actually change.
+     */
+    private var portraitStateRegistered: String? = null
+
+    /**
      * True during the first load of a storage-purge install: that load may
      * still render from the (just-cleared) stale cache, so it is reloaded
      * once from the network, and its injected script also clears DOM storage.
@@ -188,6 +195,11 @@ class MainActivity : AppCompatActivity() {
         // with the defunct game client, bypassing its own access gate.
         installBetaGuard()
 
+        // Register the current toggle state as document-start too, so the
+        // FIRST frame of yakkamon.com already carries the clock/bar
+        // attributes — no wrong-position frame, no jump after load.
+        installPortraitState()
+
         // One-time storage wipe (first run after this version): the alpha
         // test left a service worker + cache behind on testers' devices that
         // kept serving the old client from storage. Run it BEFORE the
@@ -262,11 +274,13 @@ class MainActivity : AppCompatActivity() {
                 if (spoofDesired && !documentStartInstalled) {
                     view?.evaluateJavascript(effectiveScript(), null)
                 }
-                // Fresh document: re-apply the clock-group opt-in attribute
-                // (the injected CSS is dormant without it).
-                applyPortraitClock(view)
-                // Same for the enlarged-bottom-bar opt-in attribute.
-                applyPortraitBottomBar(view)
+                // Fresh document: (re-)apply the portrait toggle attributes
+                // — a redundant same-value no-op when document-start state
+                // is installed (it was already applied before the first
+                // paint), the actual path on providers without it. The
+                // script retries until <html> exists, so it can no longer
+                // die silently mid-parse and strand the UI until onResume.
+                applyPortraitState(view)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -423,6 +437,55 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * The portrait toggles as a self-applying script: sets or removes BOTH
+     * opt-in attributes on <html>, synchronously when the document element
+     * already exists (the document-start path — before the first paint) and
+     * through an immediate retry loop otherwise (the onPageStarted fallback,
+     * where the parser may not have created <html> yet — a bare eval there
+     * used to throw silently and leave the UI in the wrong state until the
+     * next onResume). The values are baked in from the prefs at build time.
+     */
+    private fun portraitStateScript(): String {
+        val clock = AppPreferences.isClockTopLeft(this)
+        val bar = AppPreferences.isEnlargeBottomBar(this)
+        return (
+            "(function f(){var d=document.documentElement;" +
+                "if(!d){setTimeout(f,0);return;}" +
+                "try{" +
+                (if (clock) "d.setAttribute('data-yak-clock-tl','1');" else "d.removeAttribute('data-yak-clock-tl');") +
+                (if (bar) "d.setAttribute('data-yak-bar-lg','1');" else "d.removeAttribute('data-yak-bar-lg');") +
+                "}catch(e){}})();"
+            )
+    }
+
+    /**
+     * Registers [portraitStateScript] as document-start so every document
+     * created AFTER registration loads with the attributes already applied —
+     * the page simply renders in its final state, no flash or jump. Called
+     * at startup and again from onResume whenever the toggles have changed
+     * since the last registration (document-start scripts are registered as
+     * a fixed string, so a change needs a fresh registration; the newer
+     * script runs after the older ones, so the newest state wins). The
+     * live flip on the CURRENT document is applyPortraitState().
+     */
+    private fun installPortraitState() {
+        val script = portraitStateScript()
+        if (script == portraitStateRegistered) return
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        try {
+            WebViewCompat.addDocumentStartJavaScript(
+                webView,
+                script,
+                setOf("https://yakkamon.com", "https://*.yakkamon.com")
+            )
+            portraitStateRegistered = script
+        } catch (t: Throwable) {
+            // Stays null: retried on the next onResume; onPageStarted's
+            // evaluateJavascript path still applies the state either way.
+        }
+    }
+
+    /**
      * Injects the landscape override into yakkamon.com frames before any of the
      * page's own JS runs. Falls back to evaluating the script in onPageStarted
      * when the WebView provider doesn't support document-start scripts.
@@ -541,13 +604,12 @@ class MainActivity : AppCompatActivity() {
         // remain reachable from the device's App info page either way.
         applySettingsAccess()
 
-        // "Clock top-left" toggle: flip the page attribute live so the clock
-        // group moves (or returns to the corner) without reloading the game.
-        applyPortraitClock()
-
-        // "Enlarge bottom bar" toggle: flip the page attribute live so the
-        // bar grows (or reverts) without reloading the game.
-        applyPortraitBottomBar()
+        // "Clock top-left" / "Enlarge bottom bar" toggles: re-register the
+        // document-start state if the prefs changed (so future documents
+        // load already-correct), then flip the attributes on the CURRENT
+        // document live — no reloading the game.
+        installPortraitState()
+        applyPortraitState()
 
         // "Reload game" (settings row / long-press shortcut): rebuild the
         // screen; onCreate consumes the flag and lands on /play regardless
@@ -576,36 +638,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Applies the "Clock top-left" toggle to the page: activates or
-     * deactivates the dormant portrait-only CSS installed by
-     * portrait-clock-fix.js by flipping an attribute on <html>. Called on
-     * every page start (a fresh document starts un-attr-ed) and from
-     * onResume, so flipping the setting moves the group live — no reload.
+     * Applies BOTH portrait toggles to the current document by evaluating
+     * [portraitStateScript]. Called from onPageStarted (fresh document —
+     * a redundant same-value re-assert when document-start state is
+     * installed, the actual path on providers without it) and from
+     * onResume (the live flip when a toggle changed in Settings). The
+     * script retries until <html> exists, so it can no longer die silently
+     * mid-parse and strand the UI in the wrong state until the next resume.
      */
-    private fun applyPortraitClock(view: WebView? = webView) {
-        val js = if (AppPreferences.isClockTopLeft(this)) {
-            "document.documentElement.setAttribute('data-yak-clock-tl','1')"
-        } else {
-            "document.documentElement.removeAttribute('data-yak-clock-tl')"
-        }
-        view?.evaluateJavascript(js, null)
-    }
-
-    /**
-     * Applies the "Enlarge bottom bar" toggle to the page: activates or
-     * deactivates the dormant portrait-only CSS installed by
-     * portrait-bottom-bar-fix.js by flipping an attribute on <html>.
-     * Called on every page start (a fresh document starts un-attr-ed) and
-     * from onResume, so flipping the setting grows or reverts the bar live
-     * — no reload.
-     */
-    private fun applyPortraitBottomBar(view: WebView? = webView) {
-        val js = if (AppPreferences.isEnlargeBottomBar(this)) {
-            "document.documentElement.setAttribute('data-yak-bar-lg','1')"
-        } else {
-            "document.documentElement.removeAttribute('data-yak-bar-lg')"
-        }
-        view?.evaluateJavascript(js, null)
+    private fun applyPortraitState(view: WebView? = webView) {
+        view?.evaluateJavascript(portraitStateScript(), null)
     }
 
     /** Applies the "Keep screen on" toggle (default ON while playing). */
