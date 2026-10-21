@@ -108,7 +108,7 @@ Questions to ask the Yakkamon team when the API is ready:
 | Release CI | `.github/workflows/android-release.yml` — manual trigger (`workflow_dispatch`); JDK 17; decodes keystore from secrets; builds `assembleRelease`; renames APK to `yakbrowser-v[version].apk`; publishes GitHub release `v[version]` **and** updates the moving `latest` release |
 | Versioning | Bump `versionCode` (+1 per release) and `versionName` in `app/build.gradle.kts`; the workflow greps `versionName` for the tag + APK filename |
 | CI secrets (Settings → Secrets → Actions) | `RELEASE_KEYSTORE` (base64 of the .jks — copy from `C:\Users\caleb\Documents\keystores\RELEASE_KEYSTORE.base64.txt`), `KEYSTORE_PASSWORD`, `KEY_ALIAS` (= `yakbrowser`), `KEY_PASSWORD` |
-| Play upload | Build locally: `.\gradlew.bat bundleRelease` → `app\build\outputs\bundle\release\app-release.aab` (signed with the same upload key). Rename to `yakbrowser-v[version].aab` and upload in the Play Console. AAB = "Android App Bundle" (not OBB). |
+| Play upload | Build locally: `.\gradlew.bat bundleRelease` → `app\build\outputs\bundle\release\app-release.aab` (signed with the same upload key). **Always upload that file straight from the build outputs folder** — no copy or rename; Play identifies builds by versionCode, not filename. AAB = "Android App Bundle" (not OBB). |
 
 Release checklist per version: bump versions → push → run the workflow →
 download the APK from the `latest` release → build + upload the AAB to Play.
@@ -414,7 +414,7 @@ intended. Mechanism (orientation-override.js section 5):
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 .\gradlew.bat assembleDebug        # -> app\build\outputs\apk\debug\app-debug.apk
 .\gradlew.bat assembleRelease      # signed via signing.properties (if present)
-.\gradlew.bat bundleRelease        # -> app\build\outputs\bundle\release\app-release.aab (Play upload)
+.\gradlew.bat bundleRelease        # -> app\build\outputs\bundle\release\app-release.aab (the Play deliverable; upload it straight from that folder — never copy/rename it elsewhere)
 ```
 
 Or open the project folder in **Android Studio** and press Run. Note: Android
