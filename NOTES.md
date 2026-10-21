@@ -285,6 +285,28 @@ Caveat: those two 2017 phones carry WebView 61/63 (never updated since
 2017); install Play's Android System WebView update before judging the
 site's own modern JS on them — the server-rendered thanks page is fine.
 
+**Portrait monster-popup fix (presentation-only, app-injected).** The
+monster info card ("Spudling" popup: name, type, task, stamina, View
+details, red ✕s) was nearly unreadable/untappable on phones. Root cause
+in the game bundle (`main-CMZkoge-.js`, constants `Es`/`E0`/`Iq`): the
+anchored-card system applies Tailwind `scale-[0.45] md:scale-100`, so
+every viewport under 768px — i.e. all phones — gets cards at 45%
+desktop scale; the w-6 (24px) round red buttons (card close + inline
+cancel-job) shrink to ~11px. Fix ships as
+`assets/portrait-popup-fix.js`, injected always-on alongside the beta
+guard (document-start, `onPageStarted` fallback). Tailwind v4 compiles
+that arbitrary scale to the NATIVE `scale` property (separate from
+`transform` = the `info-pop-in` entrance, and `translate` = the
+above/below anchor), so the fix is one portrait-scoped rule:
+`[class*="scale-[0.45]"] { scale: 1 !important; }` (the `!important`
+beats the equal-specificity site rule, which loads after ours) — this
+gives phones the exact desktop card. Second rule widens only buttons
+inside these cards via `min-width: 32px` (min-width so wider buttons
+like "View details" are unaffected). Landscape keeps the site's own
+behavior. Verified on the S24 Ultra: card renders at desktop size in
+portrait, both ✕s easy to tap. When the site ships its own responsive
+popup fix, delete the asset + the three MainActivity references.
+
 ## Build / run
 
 ```powershell

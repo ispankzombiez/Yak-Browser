@@ -37,7 +37,8 @@ object WhatsNew {
         "1.0.8" to listOf(
             "New in settings: a Login button that opens yakkamon.com right inside the app",
             "Reload game now always brings you back to the game page",
-            "Fresh installs start clean — updates keep your login and cache"
+            "Fresh installs start clean — updates keep your login and cache",
+            "Bigger monster info popup in portrait — easier to read and tap",
             // Add the next release here.
         )
     )

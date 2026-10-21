@@ -92,6 +92,16 @@ class MainActivity : AppCompatActivity() {
         assets.open(BETA_GUARD_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
     }
 
+    /**
+     * Cached copy of the portrait popup readability fix: the site scales
+     * its anchored info cards (the monster popup included) to 45% below
+     * the md breakpoint -- every phone. This restores full scale and
+     * bigger tap targets for the red buttons, portrait only.
+     */
+    private val portraitPopupScript: String by lazy {
+        assets.open(PORTRAIT_POPUP_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -338,14 +348,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * The beta-guard script actually injected: the always-on guard, plus —
-     * while a purge's first load is pending — a DOM-storage clear (same
-     * origin as the home URL, so it wipes the game's saved session too).
+     * The always-on scripts actually injected: the beta guard, the
+     * portrait popup fix, and — while a purge's first load is pending —
+     * a DOM-storage clear (same origin as the home URL, so it wipes the
+     * game's saved session too).
      */
-    private fun betaGuardEffective(): String = if (purgeFirstLoad) {
-        "$FIRST_RUN_WIPE\n$betaGuardScript"
-    } else {
-        betaGuardScript
+    private fun betaGuardEffective(): String {
+        val guard = if (purgeFirstLoad) {
+            "$FIRST_RUN_WIPE\n$betaGuardScript"
+        } else {
+            betaGuardScript
+        }
+        return "$guard\n$portraitPopupScript"
     }
 
     /**
@@ -604,6 +618,7 @@ class MainActivity : AppCompatActivity() {
         private const val YAKKAMON_HOST = "yakkamon.com"
         private const val ORIENTATION_SCRIPT = "orientation-override.js"
         private const val BETA_GUARD_SCRIPT = "beta-guard.js"
+        private const val PORTRAIT_POPUP_SCRIPT = "portrait-popup-fix.js"
         private const val ACTION_RELOAD = "com.yak.browser.action.RELOAD"
         private const val REVIEW_FIRST_SESSION = 5
         private const val REVIEW_REPEAT_EVERY = 10
