@@ -189,16 +189,17 @@ class MainActivity : AppCompatActivity() {
 
         configureWebView()
 
+        // Register the current toggle state as document-start FIRST, so the
+        // clock/bar attributes are on <html> before the beta-guard injects
+        // the dormant CSS that references them — eliminates any attribute
+        // selector flash on the very first style evaluation.
+        installPortraitState()
+
         // Always-on site guard: must be registered before ANY load so the
         // first frame of yakkamon.com already answers display-mode like a
         // normal browser tab — otherwise the site replaces its public page
         // with the defunct game client, bypassing its own access gate.
         installBetaGuard()
-
-        // Register the current toggle state as document-start too, so the
-        // FIRST frame of yakkamon.com already carries the clock/bar
-        // attributes — no wrong-position frame, no jump after load.
-        installPortraitState()
 
         // One-time storage wipe (first run after this version): the alpha
         // test left a service worker + cache behind on testers' devices that
