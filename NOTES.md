@@ -303,9 +303,15 @@ beats the equal-specificity site rule, which loads after ours) — this
 gives phones the exact desktop card. Second rule widens only buttons
 inside these cards via `min-width: 32px` (min-width so wider buttons
 like "View details" are unaffected). Landscape keeps the site's own
-behavior. Verified on the S24 Ultra: card renders at desktop size in
-portrait, both ✕s easy to tap. When the site ships its own responsive
-popup fix, delete the asset + the three MainActivity references.
+behavior. The collapsed (i) button also gets `width: 36px` (its class
+substring `p-2 active:translate-y-0.5` is unique in the bundle; round
+art + glyph are %-sized off the inner span, so one width scales it all)
+— first cut was 48px/2x, trimmed 25% after a look on device: 36px
+(1.5x original) stays proportionate to the sprite. Verified on the S24
+Ultra: card renders at desktop size in portrait, both ✕s easy to tap,
+(i) open → card → close → reopen cycle works. When the site ships its
+own responsive popup fix, delete the asset + the three MainActivity
+references.
 
 ## Build / run
 

@@ -23,6 +23,14 @@
 //     target via min-width (so wider buttons like "View details" are
 //     unaffected). Scoped to descendants of the card so no other game
 //     button changes.
+//   * grow the collapsed (i) monster button from 24px to 36px (originally
+//     set to 48px/2x — trimmed 25% after a look on device: 36px is 1.5x
+//     the original). Its class substring "p-2 active:translate-y-0.5" is
+//     unique to it in the bundle; the round art (w-full) and glyph (52%,
+//     percentage top) are both sized relative to the inner span, so one
+//     width change scales the whole button. Anchor alignment is
+//     transform-based centering, so the bigger button stays centered on
+//     the monster.
 // Landscape keeps the site's own behavior (md+ is already 100% there;
 // narrow landscape stays at the site's chosen 45%).
 (function () {
@@ -34,6 +42,7 @@
       "@media (orientation: portrait) {\n" +
       '  [class*="scale-[0.45]"] { scale: 1 !important; }\n' +
       '  [class*="scale-[0.45]"] button[class*="active:translate-y-px"] { min-width: 32px; }\n' +
+      '  button[class*="p-2 active:translate-y-0.5"] > span { width: 36px; }\n' +
       "}\n";
     (document.head || document.documentElement).appendChild(style);
   } catch (e) {
