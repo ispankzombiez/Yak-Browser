@@ -22,6 +22,20 @@
         app:summaryOn="Screen stays awake during play"
         app:title="Keep screen on" />
 
+    <SwitchPreferenceCompat
+        app:defaultValue="false"
+        app:key="clock_top_left"
+        app:summaryOff="Clock stays in the bottom-right corner"
+        app:summaryOn="Clock group moves to the top-left (portrait only — landscape unchanged)"
+        app:title="Clock top-left" />
+
+    <SwitchPreferenceCompat
+        app:defaultValue="false"
+        app:key="enlarge_bottom_bar"
+        app:summaryOff="Items bar at the site&#8217;s original size"
+        app:summaryOn="Items bar enlarged ~18% for easier taps (portrait only — landscape unchanged)"
+        app:title="Enlarge bottom bar" />
+
     <Preference
         app:key="reload_game"
         app:summary="Restarts the game page without closing the app"

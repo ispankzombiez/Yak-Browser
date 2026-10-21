@@ -28,6 +28,22 @@ object AppPreferences {
     const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
 
     /**
+     * When true, the site's clock group (clock pill + the two icons in the
+     * bottom-right corner) is moved to the top-left corner — portrait
+     * screens only; landscape is never affected. Default false: the group
+     * stays where the site puts it.
+     */
+    const val KEY_CLOCK_TOP_LEFT = "clock_top_left"
+
+    /**
+     * When true, the site's bottom HUD items bar (Items button + the row
+     * of useable-item slots) is enlarged ~18% for easier one-handed taps —
+     * portrait screens only; landscape is never affected. Default false:
+     * the bar stays at the site's original size.
+     */
+    const val KEY_ENLARGE_BOTTOM_BAR = "enlarge_bottom_bar"
+
+    /**
      * One-shot flag set by the "Reload game" actions (settings row or the
      * long-press shortcut); the browser screen peeks it on resume (to
      * rebuild) and consumes it in onCreate, which then always lands on the
@@ -68,6 +84,14 @@ object AppPreferences {
     fun isKeepScreenOn(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
             .getBoolean(KEY_KEEP_SCREEN_ON, true)
+
+    fun isClockTopLeft(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_CLOCK_TOP_LEFT, false)
+
+    fun isEnlargeBottomBar(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_ENLARGE_BOTTOM_BAR, false)
 
     fun requestReload(context: Context) {
         PreferenceManager.getDefaultSharedPreferences(context)

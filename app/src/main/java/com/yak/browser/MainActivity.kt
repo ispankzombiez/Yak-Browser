@@ -102,6 +102,25 @@ class MainActivity : AppCompatActivity() {
         assets.open(PORTRAIT_POPUP_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
     }
 
+    /**
+     * Cached copy of the portrait bottom-bar sizing fix (see
+     * assets/portrait-bottom-bar-fix.js): grows the bottom HUD items bar
+     * ~18% for easier one-handed taps. Always-on and unconditional,
+     * portrait only.
+     */
+    private val portraitBottomBarScript: String by lazy {
+        assets.open(PORTRAIT_BOTTOM_BAR_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    }
+
+    /**
+     * Cached copy of the optional clock-group move (see
+     * assets/portrait-clock-fix.js): installs the dormant portrait-only
+     * CSS; the app activates it by setting an attribute on <html>.
+     */
+    private val portraitClockScript: String by lazy {
+        assets.open(PORTRAIT_CLOCK_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    }
+
     /** Debug-only QA script (see assets/debug-camera-test.js); never shipped. */
     private val cameraTestScript: String by lazy {
         assets.open(CAMERA_TEST_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
@@ -243,6 +262,11 @@ class MainActivity : AppCompatActivity() {
                 if (spoofDesired && !documentStartInstalled) {
                     view?.evaluateJavascript(effectiveScript(), null)
                 }
+                // Fresh document: re-apply the clock-group opt-in attribute
+                // (the injected CSS is dormant without it).
+                applyPortraitClock(view)
+                // Same for the enlarged-bottom-bar opt-in attribute.
+                applyPortraitBottomBar(view)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -354,9 +378,9 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * The always-on scripts actually injected: the beta guard, the
-     * portrait popup fix, and — while a purge's first load is pending —
-     * a DOM-storage clear (same origin as the home URL, so it wipes the
-     * game's saved session too).
+     * portrait popup fix, the dormant clock-group move, and — while a
+     * purge's first load is pending — a DOM-storage clear (same origin
+     * as the home URL, so it wipes the game's saved session too).
      */
     private fun betaGuardEffective(): String {
         val guard = if (purgeFirstLoad) {
@@ -364,7 +388,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             betaGuardScript
         }
-        return "$guard\n$portraitPopupScript"
+        return "$guard\n$portraitPopupScript\n$portraitBottomBarScript\n$portraitClockScript"
     }
 
     /**
@@ -517,6 +541,14 @@ class MainActivity : AppCompatActivity() {
         // remain reachable from the device's App info page either way.
         applySettingsAccess()
 
+        // "Clock top-left" toggle: flip the page attribute live so the clock
+        // group moves (or returns to the corner) without reloading the game.
+        applyPortraitClock()
+
+        // "Enlarge bottom bar" toggle: flip the page attribute live so the
+        // bar grows (or reverts) without reloading the game.
+        applyPortraitBottomBar()
+
         // "Reload game" (settings row / long-press shortcut): rebuild the
         // screen; onCreate consumes the flag and lands on /play regardless
         // of what page is currently open.
@@ -541,6 +573,39 @@ class MainActivity : AppCompatActivity() {
     private fun applySettingsAccess() {
         findViewById<ImageView>(R.id.settingsButton).visibility =
             if (AppPreferences.isSettingsAccessHidden(this)) View.GONE else View.VISIBLE
+    }
+
+    /**
+     * Applies the "Clock top-left" toggle to the page: activates or
+     * deactivates the dormant portrait-only CSS installed by
+     * portrait-clock-fix.js by flipping an attribute on <html>. Called on
+     * every page start (a fresh document starts un-attr-ed) and from
+     * onResume, so flipping the setting moves the group live — no reload.
+     */
+    private fun applyPortraitClock(view: WebView? = webView) {
+        val js = if (AppPreferences.isClockTopLeft(this)) {
+            "document.documentElement.setAttribute('data-yak-clock-tl','1')"
+        } else {
+            "document.documentElement.removeAttribute('data-yak-clock-tl')"
+        }
+        view?.evaluateJavascript(js, null)
+    }
+
+    /**
+     * Applies the "Enlarge bottom bar" toggle to the page: activates or
+     * deactivates the dormant portrait-only CSS installed by
+     * portrait-bottom-bar-fix.js by flipping an attribute on <html>.
+     * Called on every page start (a fresh document starts un-attr-ed) and
+     * from onResume, so flipping the setting grows or reverts the bar live
+     * — no reload.
+     */
+    private fun applyPortraitBottomBar(view: WebView? = webView) {
+        val js = if (AppPreferences.isEnlargeBottomBar(this)) {
+            "document.documentElement.setAttribute('data-yak-bar-lg','1')"
+        } else {
+            "document.documentElement.removeAttribute('data-yak-bar-lg')"
+        }
+        view?.evaluateJavascript(js, null)
     }
 
     /** Applies the "Keep screen on" toggle (default ON while playing). */
@@ -633,6 +698,8 @@ class MainActivity : AppCompatActivity() {
         private const val ORIENTATION_SCRIPT = "orientation-override.js"
         private const val BETA_GUARD_SCRIPT = "beta-guard.js"
         private const val PORTRAIT_POPUP_SCRIPT = "portrait-popup-fix.js"
+        private const val PORTRAIT_BOTTOM_BAR_SCRIPT = "portrait-bottom-bar-fix.js"
+        private const val PORTRAIT_CLOCK_SCRIPT = "portrait-clock-fix.js"
         private const val CAMERA_TEST_SCRIPT = "debug-camera-test.js"
         private const val ACTION_RELOAD = "com.yak.browser.action.RELOAD"
         private const val REVIEW_FIRST_SESSION = 5

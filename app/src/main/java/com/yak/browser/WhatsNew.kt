@@ -44,6 +44,11 @@ object WhatsNew {
             "Gym and battle screens now fit portrait — no more Yakkamon cut off at the edge",
             "The whole battle board is visible at once, slightly zoomed out to fit",
             // Add the next release here.
+        ),
+        "1.0.10" to listOf(
+            "Optional \u201cClock top-left\u201d \u2014 move the clock group to the top-left corner, sized to match the HUD pills",
+            "New in settings: \u201cEnlarge bottom bar\u201d \u2014 bigger item slots for easier taps",
+            // Add the next release here.
         )
     )
 

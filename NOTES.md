@@ -407,6 +407,67 @@ intended. Mechanism (orientation-override.js section 5):
   active. Note `Page.addScriptToEvaluateOnNewDocument` silently no-ops
   on these old WebViews — test scripts must be app-injected.
 
+### Portrait HUD toggles - clock top-left + enlarged bottom bar (v1.0.10)
+
+Two independent, opt-in, portrait-only presentation toggles. Both use the
+same mechanism: a dormant CSS asset injected always-on with the beta
+guard (`betaGuardEffective()` in MainActivity), gated behind an attribute
+on `<html>`; MainActivity flips the attribute in `onPageStarted` (fresh
+document starts un-attr-ed) and `onResume` (live toggle - no reload or
+activity recreate, unlike the orientation lock). Prefs default **false**,
+landscape is never touched (real `@media (orientation: portrait)`).
+
+**Clock top-left** (`assets/portrait-clock-fix.js`, attr
+`data-yak-clock-tl`, pref `clock_top_left`)
+
+- Structure: GROUP = `div.absolute.bottom-3.right-3.flex.items-center`;
+  children = INNER `div.flex.items-center` (clock pill + the two icon
+  imgs) and the site's gear `BUTTON.pointer-events-auto.-m-2.p-2`.
+- Two gotchas baked into the constants:
+  1. `position: fixed` inside a transformed ancestor anchors to THAT
+     ancestor - putting `transform: scale()` on GROUP made the fixed gear
+     resolve against the scaled box and dragged it into the clock
+     cluster (measured [72,3,53,52]). Fix: GROUP gets `position: fixed`
+     (screen space - the right pill row is screen-stable while the HUD
+     frame drifts with safe-area changes), the scale lives on INNER only,
+     gear stays viewport-anchored bottom-right.
+  2. The site writes `zoom: 0.78 !important` INLINE on GROUP via JS (its
+     small-screen shrink - the source of every odd sub-size: h-7.5
+     rendering 23, size-6 rendering 19, computed 49px rendering 38).
+     Inline !important outranks author !important, so CSS cannot remove
+     it; all lengths are expressed in GROUP's LOCAL units (screen px /
+     0.78) and render at exactly the screen target.
+- Geometry (S24 Ultra, CSS 384x832), validated live over CDP:
+  - GROUP fixed top 43.59 / left 5.13 -> renders 34/4 = the topmost
+    right pill's row (that pill measures `[278,34,90,32]`).
+  - INNER `scale(1.3465)` from top-left: natural ~23px row -> 31.5px =
+    the right pills' height (proportions kept, clock pill ~85 wide vs
+    their 90).
+  - Gear BUTTON keeps the chat bubble's footprint: width/height
+    62.82/61.54 (renders 49x48), padding 15.38 (12), img 32.05x30.77
+    (25x24), right 5.13 (4), bottom 10.26 (8) -> box at x331 = chat's x
+    (centered under it), glyph bottom 812 = its original height from the
+    screen edge.
+- Caveats: if "Settings access" ever shows the app's native floating
+  gear (window top-left) it overlaps the moved clock row - that toggle
+  is off on the reference device. Constants are S24-specific; on other
+  phones re-measure (the site's zoom factor could differ too).
+
+**Enlarge bottom bar** (`assets/portrait-bottom-bar-fix.js`, attr
+`data-yak-bar-lg`, pref `enlarge_bottom_bar`)
+
+- Tray = `div[class*="absolute bottom-0 left-1/2"]` (Items button + the
+  row of useable-item slots), natural `[4, 761, 248, 58.64]`.
+- `transform: scale(1.18)` origin `left bottom` (left edge pinned, grows
+  rightward/upward): -> `[4, 751, 292.6, 69.2]`, right edge 252 -> 297;
+  the right-side chat/gear column sits at x=331, so ~34px clearance is
+  kept. Tailwind v4 compiles this tray's sizing to native width/height
+  (h-13.5 etc), and the tray carries no site transform of its own, so
+  the added transform layers cleanly.
+- Verified over CDP: OFF = 58.64 (original), ON = 69.2, survives
+  `location.reload()` (attribute re-applied in onPageStarted), OFF again
+  reverts. Independent of the clock toggle - both can be on at once.
+
 ## Build / run
 
 ```powershell
