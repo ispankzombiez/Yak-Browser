@@ -46,6 +46,88 @@
  * a guard flag prevents double installation if injected more than once.
  * It is NOT installed at all when the orientation lock is turned off.
  */
+/*
+ * PORTRAIT CAMERA WIDENING (boot-critical, runs first).
+ *
+ * The game boots its Phaser camera at window.innerWidth x window.innerHeight,
+ * and its battle/gym layout centres the field with the team benches OUTSIDE
+ * it (player bench left of the field, enemy bench right). Landscape phones
+ * the game was designed for are ~768-832 CSS px wide, so the whole board
+ * fits; at our portrait width (~384 px) the player's leftmost bench
+ * Yakkamon lands at negative x and is cut off at the screen edge.
+ *
+ * So the page's JS is told the viewport is at least MIN_CAMERA_W px wide —
+ * in exact proportion (height scales with width) so the canvas downscale
+ * stays uniform. The game renders a wider world slice; the canvas CSS is
+ * pinned back to the real viewport, which zooms the scene out slightly
+ * (~83% on a 384 px phone) instead of cutting anything off.
+ *
+ * The decision is made per read from documentElement.clientWidth/Height
+ * (the real layout viewport), because at document-start the layout isn't
+ * done yet: clientWidth is 0, and the pre-parse fallback (980 px) would
+ * look "wide enough". Before layout, the captured pre-parse size is
+ * reported unchanged. Only JS readers of innerWidth/innerHeight see the
+ * widened values: CSS media queries, layout, and this script's own
+ * sections all use documentElement.clientWidth/Height directly.
+ */
+(function () {
+  'use strict';
+
+  if (window.__yakCameraSpoof) {
+    return;
+  }
+  window.__yakCameraSpoof = true;
+
+  var MIN_CAMERA_W = 460;
+  /* 460 leaves the leftmost bench Yakkamon ~13 CSS px clear of the edge on
+     a 384 px phone (~18 px on narrower ones) at ~83% zoom. */
+  var yakCamEarlyW = window.innerWidth;
+  var yakCamEarlyH = window.innerHeight;
+  var yakCamStyleDone = false;
+
+  function yakCamSize(wantWidth) {
+    var d = document.documentElement;
+    var w = (d && d.clientWidth) || 0;
+    var h = (d && d.clientHeight) || 0;
+    /* Pre-layout or landscape: report the real values, no spoof. */
+    if (!w || !h || h < w || w >= MIN_CAMERA_W) {
+      return wantWidth ? (w || yakCamEarlyW) : (h || yakCamEarlyH);
+    }
+    if (!yakCamStyleDone) {
+      yakCamStyleDone = true;
+      try {
+        var st = document.createElement('style');
+        st.textContent =
+          'canvas { width: 100% !important; height: 100% !important; }';
+        (document.head || d).appendChild(st);
+      } catch (e) {
+        /* style is best-effort; the spoof itself continues */
+      }
+    }
+    if (wantWidth) {
+      return MIN_CAMERA_W;
+    }
+    return Math.round(h * MIN_CAMERA_W / w);
+  }
+
+  try {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      get: function () {
+        return yakCamSize(true);
+      }
+    });
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      get: function () {
+        return yakCamSize(false);
+      }
+    });
+  } catch (e) {
+    /* readonly in this engine; carry on unspoofed */
+  }
+})();
+
 (function () {
   'use strict';
 
@@ -160,9 +242,13 @@
 
     function update() {
       try {
-        if (typeof window.innerWidth !== 'number') return;
+        // Real layout viewport: documentElement.clientWidth ignores both the
+        // JS-level camera spoof and the pre-parse fallback size.
+        var vw = document.documentElement.clientWidth || window.innerWidth;
+        var vh = document.documentElement.clientHeight || window.innerHeight;
+        if (!vw || !vh) return;
         // Landscape viewports keep the game's own (correct) layout.
-        var portrait = window.innerHeight >= window.innerWidth;
+        var portrait = vh >= vw;
 
         // a) the big centred item bar (the look-alikes are 12 px label pills)
         var bars = document.querySelectorAll(
@@ -346,10 +432,10 @@
 
     function fitModals() {
       try {
-        if (typeof window.innerWidth !== 'number') return;
-        if (window.innerWidth >= window.innerHeight) return; // portrait only
-        var vw = window.innerWidth;
-        var vh = window.innerHeight;
+        var vw = document.documentElement.clientWidth || window.innerWidth;
+        var vh = document.documentElement.clientHeight || window.innerHeight;
+        if (!vw || !vh) return;
+        if (vw >= vh) return; // portrait only
         var root = document.getElementById('react-root');
         if (!root) return;
 
@@ -541,10 +627,10 @@
 
     function fitOverflowing() {
       try {
-        if (typeof window.innerWidth !== 'number') return;
-        if (window.innerWidth >= window.innerHeight) return; // portrait only
-        var vw = window.innerWidth;
-        var vh = window.innerHeight;
+        var vw = document.documentElement.clientWidth || window.innerWidth;
+        var vh = document.documentElement.clientHeight || window.innerHeight;
+        if (!vw || !vh) return;
+        if (vw >= vh) return; // portrait only
         var root = document.getElementById('react-root');
         if (!root) return;
 

@@ -102,6 +102,11 @@ class MainActivity : AppCompatActivity() {
         assets.open(PORTRAIT_POPUP_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
     }
 
+    /** Debug-only QA script (see assets/debug-camera-test.js); never shipped. */
+    private val cameraTestScript: String by lazy {
+        assets.open(CAMERA_TEST_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -408,6 +413,15 @@ class MainActivity : AppCompatActivity() {
                     effectiveScript(),
                     setOf("https://yakkamon.com", "https://*.yakkamon.com")
                 )
+                if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+                    runCatching {
+                        WebViewCompat.addDocumentStartJavaScript(
+                            webView,
+                            cameraTestScript,
+                            setOf("https://yakkamon.com", "https://*.yakkamon.com")
+                        )
+                    }
+                }
                 true
             } else {
                 false
@@ -619,6 +633,7 @@ class MainActivity : AppCompatActivity() {
         private const val ORIENTATION_SCRIPT = "orientation-override.js"
         private const val BETA_GUARD_SCRIPT = "beta-guard.js"
         private const val PORTRAIT_POPUP_SCRIPT = "portrait-popup-fix.js"
+        private const val CAMERA_TEST_SCRIPT = "debug-camera-test.js"
         private const val ACTION_RELOAD = "com.yak.browser.action.RELOAD"
         private const val REVIEW_FIRST_SESSION = 5
         private const val REVIEW_REPEAT_EVERY = 10

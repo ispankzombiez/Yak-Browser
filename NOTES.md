@@ -353,6 +353,60 @@ intended. Mechanism (orientation-override.js section 5):
   appear centred at native size; Squad/Shop/Dojo windows should be
   unaffected (they take the stacked `native` path).
 
+### Portrait gym/battle camera fit — leftmost Yakkamon cut off (v1.0.9)
+
+- Symptom: on the gym challenge screen (farmhouse → Find Gyms → visit →
+  Challenge), the player's bench column — unplaced team members, stacked
+  left of the battle field — rendered partly or fully off-screen at the
+  left edge; the user's leftmost monster was cut in half.
+- Mechanism (bundle `main-CMZkoge-.js`): the game boots Phaser with
+  `scale: {mode: NONE, width: innerWidth*Se, height: innerHeight*Se,
+  zoom: 1/Se}` (Se = `Clamp(round(dpr),2,4)`, i.e. 3 on a 1080p/450dpi
+  phone) — so the camera slice is exactly `innerWidth x innerHeight`
+  CSS px, fixed at boot. The battle layout `Tp({width,height,safe},
+  field, rosterLen, trayKinds, enemyReserves)` CENTRES the field in the
+  safe width and puts the player bench to the LEFT
+  (`p = r - D2 - L2*y`, odd roster indices one more `OW` further left).
+  At the portrait width (384 CSS px on the S24 Ultra) the field eats
+  the width and the bench goes negative-x (measured: girl's HP bar
+  clipped at screen x=0, world x≈-15). Landscape phones (768–832) fit
+  by design — this is a portrait-only failure.
+- Live resize does NOT re-run the battle layout in practice on this
+  engine (`t()` → `scale.resize` fires, but the net effect observed via
+  CDP was only the canvas box changing, not a re-layout), so the fix
+  targets the BOOT path: the whole scene is created from the values the
+  page sees at boot.
+- Fix (`assets/orientation-override.js`, new first section, portrait +
+  orientation-lock only): JS readers of `innerWidth`/`innerHeight` are
+  told the viewport is at least **460 CSS px** wide, with the height
+  scaled in exact proportion (`460/realW`) so the canvas downscale
+  stays uniform (~83% on the 384 px phone, ~89% on narrower ones). The
+  decision is made **lazily per read** from
+  `documentElement.clientWidth/Height` — at document-start the layout
+  isn't done (clientWidth is 0, and the pre-parse fallback width is
+  980), so an eager check sees "wide enough" and silently skips the
+  spoof; before layout the captured pre-parse size is reported
+  unchanged. A `canvas { width:100%!important; height:100%!important }`
+  rule (appended on first read) pins the canvas back over the real
+  viewport; Phaser's inline canvas style loses to `!important`. Tap
+  mapping stays correct because Phaser maps input through
+  `getBoundingClientRect` (verified live: taps hit the right buttons).
+- All of this script's own fit sections (4/5/5b/6) now read the REAL
+  viewport via `documentElement.clientWidth/Height` instead of
+  `innerWidth` — they would otherwise have seen 460 and computed every
+  window fit ~15% oversized.
+- Tuning: 442 (k≈1.15) = girl visible but ~4 CSS px from the edge;
+  480 (k=1.25) = comfortable 23 px margin but noticeably zoomed out;
+  **460** chosen: ~13 CSS px margin on the S24 (~18 px on narrower
+  phones) at ~83% zoom. `rh(460)=1` keeps the art tier at 1 (must stay
+  below the 768 tier boundary).
+- QA: `assets/debug-camera-test.js` (injected only on FLAG_DEBUGGABLE
+  builds via `MainActivity.installOrientationOverride()`, never in the
+  release app) mirrors the same spoof with a tunable factor in
+  `localStorage['yak_k']`; it no-ops when the shipped spoof is already
+  active. Note `Page.addScriptToEvaluateOnNewDocument` silently no-ops
+  on these old WebViews — test scripts must be app-injected.
+
 ## Build / run
 
 ```powershell

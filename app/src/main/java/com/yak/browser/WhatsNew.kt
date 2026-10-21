@@ -38,7 +38,11 @@ object WhatsNew {
             "New in settings: a Login button that opens yakkamon.com right inside the app",
             "Reload game now always brings you back to the game page",
             "Fresh installs start clean — updates keep your login and cache",
-            "Bigger monster info popup in portrait — easier to read and tap",
+            "Bigger monster info popup in portrait — easier to read and tap"
+        ),
+        "1.0.9" to listOf(
+            "Gym and battle screens now fit portrait — no more Yakkamon cut off at the edge",
+            "The whole battle board is visible at once, slightly zoomed out to fit",
             // Add the next release here.
         )
     )
