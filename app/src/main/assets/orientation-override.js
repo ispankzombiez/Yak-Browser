@@ -207,6 +207,72 @@
     update();
   })();
 
+  /* Shared helpers for the window-fit passes (sections 5 and 6). ----------- */
+
+  // True while a *running* animation (CSS or Web Animations API) targets
+  // `el` or anything inside it. Claiming a modal while it is flying into
+  // place measures a meaningless rect, and the claim is one-shot — the
+  // window then lives at the wrong spot/size for as long as it stays open
+  // (seen on the catch/celebration modal, whose contents FLIP in over
+  // ~600 ms). Engines without document.getAnimations (very old WebViews)
+  // report false and keep the previous claim-immediately behaviour.
+  function yakAnimationsRunning(el) {
+    try {
+      if (typeof document.getAnimations !== 'function') return false;
+      var list = document.getAnimations();
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].playState !== 'running') continue;
+        var target = list[i].effect && list[i].effect.target;
+        if (target && (target === el || el.contains(target))) return true;
+      }
+    } catch (e) {
+      /* probing animations must never break the page */
+    }
+    return false;
+  }
+
+  // Bounded "still animating in" check shared by sections 5 and 6: records
+  // when a modal was first seen and reports true only while it is both
+  // young AND animating, so a never-ending decorative animation inside a
+  // window cannot block its fit forever.
+  function yakSeenRecently(modal) {
+    if (!modal.__yakFitSeenAt) modal.__yakFitSeenAt = Date.now();
+    return Date.now() - modal.__yakFitSeenAt < 700 && yakAnimationsRunning(modal);
+  }
+
+  // Centres `modal` in the viewport and scales it down to fit, wherever
+  // its layout box happens to sit: the transform is cleared, the pure
+  // layout rect is read, and the translate is computed from THAT rect.
+  // Flex-centred backdrops put the layout box at an arbitrary (usually
+  // negative) offset, so assuming the box starts at (0,0) — as the old
+  // section 5c math did — dropped scaled windows at the bottom-left, half
+  // off-screen (the catch/celebration modal). Idempotent: calling it on
+  // every pass re-centres after animations settle and follows viewport
+  // changes. Returns the applied scale (clamped to 1), or null when the
+  // box cannot be measured.
+  function yakPlaceScaled(modal, vw, vh) {
+    try {
+      modal.style.setProperty('transform-origin', '0 0', 'important');
+      // Clear any transform (ours or the game's) so the rect read below is
+      // the pure layout box. The final value replaces it in the same task,
+      // so nothing is ever painted in between.
+      modal.style.setProperty('transform', 'none', 'important');
+      var r = modal.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+      var scale = Math.min((vw - 8) / r.width, (vh - 8) / r.height, 1);
+      var tx = (vw - r.width * scale) / 2 - r.left;
+      var ty = (vh - r.height * scale) / 2 - r.top;
+      modal.style.setProperty(
+        'transform',
+        'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + scale.toFixed(4) + ')',
+        'important'
+      );
+      return scale;
+    } catch (e) {
+      return null;
+    }
+  }
+
   /* 5. Portrait-native windows: stack columns, reveal the hidden pane ------- */
   // These windows are two-column layouts designed for landscape widths. Below
   // the game's `sm` breakpoint (640 CSS px) the right-hand detail/action
@@ -226,6 +292,13 @@
   //      own 640 px design width (where both columns render at natural size)
   //      and scale it into the viewport with a transform. Transforms keep
   //      hit-testing aligned, so every button stays exactly where it looks.
+  //      Placement is computed from the window's real layout rect (see the
+  //      shared yakPlaceScaled helper) and re-applied on every pass: the
+  //      old math assumed the layout box started at (0,0), but flex-centred
+  //      backdrops (e.g. the catch/"joined your team" celebration modal)
+  //      place it at a negative offset, which dropped scaled windows at the
+  //      bottom-left, half off-screen. Windows are also not claimed while
+  //      they are still animating in, since mid-flight rects are garbage.
   //
   // Small dialogs (Welcome Back, confirmations) measure within the viewport
   // and are left untouched.
@@ -293,6 +366,15 @@
           for (var k = 0; k < modals.length; k++) {
             var modal = modals[k];
             if (getComputedStyle(modal).display === 'none') continue;
+            // Already scaled by an earlier pass: re-place it from its layout
+            // rect every pass (idempotent), so a claim that was computed
+            // while the window was still animating in — or a later layout
+            // or viewport change — self-corrects instead of sticking.
+            var mark5 = modal.getAttribute(FIT_ATTR);
+            if (mark5 && mark5.indexOf('s=') === 0) {
+              yakPlaceScaled(modal, vw, vh);
+              continue;
+            }
             // React sometimes replaces the very nodes we styled (data swaps);
             // the mark would stick while our layout silently reverts — detect
             // the detached stack and run the whole flow again.
@@ -301,6 +383,10 @@
               modal.removeAttribute(FIT_ATTR);
             }
             if (modal.hasAttribute(FIT_ATTR)) continue;
+            // Never claim a window that is still flying/spinning into place:
+            // the measurement below would be meaningless (bounded, so
+            // decorative loops cannot block the fit).
+            if (yakSeenRecently(modal)) continue;
 
             /* a) portrait-native: stack the columns, reveal the detail pane */
             var applied = applyPortraitLayout(modal);
@@ -347,17 +433,15 @@
                 cols[c].style.setProperty('display', 'flex', 'important');
               }
             }
+            // Lay the window out at the game's design width, then centre and
+            // scale it from its REAL layout rect (yakPlaceScaled). The old
+            // math assumed the box started at (0,0), but flex-centred
+            // backdrops (the catch/celebration modal) place it at a negative
+            // offset — the window landed bottom-left, clipped off-screen and
+            // scaled against the wrong width. Placement is re-run every
+            // pass, so a mid-animation claim corrects itself once settled.
             modal.style.setProperty('width', DESIGN_W + 'px', 'important');
-            var naturalH = modal.getBoundingClientRect().height;
-            var scale = (vw - 8) / DESIGN_W;
-            var tx = (vw - DESIGN_W * scale) / 2;
-            var ty = (vh - naturalH * scale) / 2;
-            modal.style.setProperty(
-              'transform',
-              'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + scale.toFixed(4) + ')',
-              'important'
-            );
-            modal.style.setProperty('transform-origin', '0 0', 'important');
+            var scale = yakPlaceScaled(modal, vw, vh) || (vw - 8) / DESIGN_W;
             modal.setAttribute(FIT_ATTR, 's=' + scale.toFixed(3));
           }
         }
@@ -478,7 +562,17 @@
             var modal = modals[k];
             if (getComputedStyle(modal).display === 'none') continue;
             var mark = modal.getAttribute(FIT_ATTR);
-            if (mark && mark !== 'noscale') continue; // section 5 owns it (native/scaled)
+            // Already scaled by an earlier pass: re-place from the layout
+            // rect every pass (idempotent) so mid-animation claims and later
+            // layout/viewport changes self-correct.
+            if (mark && mark.indexOf('generic-s=') === 0) {
+              yakPlaceScaled(modal, vw, vh);
+              continue;
+            }
+            if (mark && mark !== 'noscale') continue; // section 5 owns it
+            // Never claim a window that is still animating into place —
+            // the rect below would be meaningless (bounded; see section 5).
+            if (!mark && yakSeenRecently(modal)) continue;
 
             var mrect = modal.getBoundingClientRect();
             if (mrect.width <= vw - FIT_MARGIN && mrect.height <= vh - FIT_MARGIN) {
@@ -486,23 +580,14 @@
               continue;
             }
 
-            // Scale first, then measure the *visual* rect and shift it into
-            // the viewport centre. The correction step makes the result
-            // independent of where the window's layout happens to sit (the
-            // game scroll-locks layers around its own modals, which can
-            // offset fixed-position children), so any shape ends up centred.
-            var scale = Math.min((vw - 8) / mrect.width, (vh - 8) / mrect.height);
-            modal.style.setProperty('transform-origin', '0 0', 'important');
-            modal.style.setProperty('transform', 'scale(' + scale.toFixed(4) + ')', 'important');
-            var vrect = modal.getBoundingClientRect();
-            var tx = (vw - vrect.width) / 2 - vrect.left;
-            var ty = (vh - vrect.height) / 2 - vrect.top;
-            modal.style.setProperty(
-              'transform',
-              'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + scale.toFixed(4) + ')',
-              'important'
-            );
-            modal.setAttribute(FIT_ATTR, 'generic-s=' + scale.toFixed(3));
+            // Scale first, then measure the pure *layout* rect and shift the
+            // window into the viewport centre (yakPlaceScaled). The
+            // correction step makes the result independent of where the
+            // window's layout happens to sit (the game scroll-locks layers
+            // around its own modals, which can offset fixed-position
+            // children), so any shape ends up centred.
+            var scale = yakPlaceScaled(modal, vw, vh);
+            modal.setAttribute(FIT_ATTR, 'generic-s=' + (scale || 0).toFixed(3));
           }
         }
       } catch (e) {

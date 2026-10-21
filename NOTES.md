@@ -313,6 +313,46 @@ Ultra: card renders at desktop size in portrait, both ✕s easy to tap,
 own responsive popup fix, delete the asset + the three MainActivity
 references.
 
+**Scaled-window placement fix (wrong spot / wrong size, intermittent).**
+User screenshot: the catch/"{name} joined your team!" celebration modal
+sat bottom-left, clipped off-screen left, and visibly smaller than
+intended. Mechanism (orientation-override.js section 5):
+- The celebration uses the standard modal shell (`Vt` backdrop =
+  `flex items-center justify-center`, `Wt` = `w-full max-w-[32rem]
+  animate-modal-in`), NOT the `max-w-4xl` two-column windows section 5a
+  was built for, so nothing stacks and — on the pass that claimed it —
+  the mount-time measurement reported overflow (its contents FLIP in via
+  WAAPI over ~600 ms; rects measured mid-flight are garbage) → section
+  5c claimed it one-shot: `width: 640px !important` (clamped by
+  max-w-[32rem] to 512) + `translate(tx,ty) scale(s)`.
+- 5c's math assumed the layout box starts at (0,0): `tx = (vw−640·s)/2`
+  and `ty = (vh−naturalH·s)/2`. But the backdrop flex-centres the box at
+  a NEGATIVE offset (≈−92px at 512 width), and `items-center` had
+  already centred it vertically — so the translate double-centred:
+  visual left = −92+4 (clipped), visual top = layoutTop+ty (pushed to
+  the bottom), and the scale was computed against 640 while the actual
+  box was 512 (too small). Section 6 had the layout-rect correction step
+  since day one; 5c never got it. The user saw it "sometimes" because
+  only false-overflow claims (animation-timing dependent) reach 5c.
+- Fix: shared helpers in the outer IIFE. `yakPlaceScaled(modal,vw,vh)`
+  clears the transform, reads the pure layout rect, then centres/scales
+  (min of width/height ratios, clamped to 1) from that rect — correct at
+  any layout offset; both section 5c and section 6 now use it. Both
+  sections re-place `s=`/`generic-s=`-marked windows on EVERY pass
+  (idempotent), so a mid-animation claim self-corrects once settled and
+  viewport changes are followed. `yakSeenRecently()` stops either
+  section from claiming a window while a running CSS/WAAPI animation
+  targets it or its subtree (bounded to 700 ms from first sight so
+  decorative loops can't block the fit; engines without
+  `document.getAnimations` — old WebViews — keep the previous
+  claim-immediately behaviour, now safe anyway thanks to re-placement).
+- The celebration modal is responsive by design (`w-[34%]` info column
+  + `flex-1 min-w-0` skills list) — with a settled measurement it simply
+  fits and is marked `noscale`, i.e. left at the game's own native
+  layout. Verification needs a live catch (one-shot modal): window must
+  appear centred at native size; Squad/Shop/Dojo windows should be
+  unaffected (they take the stacked `native` path).
+
 ## Build / run
 
 ```powershell
