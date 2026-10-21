@@ -48,6 +48,10 @@ object WhatsNew {
         "1.0.10" to listOf(
             "Optional \u201cClock top-left\u201d \u2014 move the clock group to the top-left corner, sized to match the HUD pills",
             "New in settings: \u201cEnlarge bottom bar\u201d \u2014 bigger item slots for easier taps",
+        ),
+        "1.0.11" to listOf(
+            "All layout toggles now apply before first paint — no flash or jump on load, reload, or navigation",
+            "Version comparison hardened for future releases",
             // Add the next release here.
         )
     )

@@ -26,8 +26,8 @@ android {
         // Galaxy S7 on stock Android 7; app code uses no API > 24 paths.
         minSdk = 24
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.0.10"
+        versionCode = 12
+        versionName = "1.0.11"
     }
 
     signingConfigs {
