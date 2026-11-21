@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.yak.browser.NotificationPermissionPreference
+        app:key="notification_permission"
+        app:title="@string/notification_permission_title" />
+
+    <SwitchPreferenceCompat
+        app:defaultValue="true"
+        app:key="zone_notifications"
+        app:summaryOff="No hunting-zone alerts or farm-visitor reminders"
+        app:summaryOn="Hunting-zone alerts and tentative farm-visitor reminders (open the game to learn timers; farm arrivals are not guaranteed)"
+        app:title="Yakkamon arrival alerts" />
+
+    <SwitchPreferenceCompat
+        app:defaultValue="false"
+        app:key="battle_notifications"
+        app:summaryOff="No new battle challenge alerts"
+        app:summaryOn="Open Battles to schedule its next challenge refresh. One alert can arrive while the app is closed; open Battles again to schedule the next."
+        app:title="New battle challenges" />
+
+    <SwitchPreferenceCompat
+        app:defaultValue="false"
+        app:key="exact_alarms"
+        app:summaryOff="Approximate timing: Android may delay alerts to save battery"
+        app:summaryOn="Exact timing for arrival and battle alerts (needs the &#8220;Alarms &amp; reminders&#8221; permission)"
+        app:title="Exact alarm timing" />
+
+    <Preference
+        app:key="test_notification"
+        app:summary="Sends a sample notification to check alerts work on this device"
+        app:title="Send test notification" />
+
+</PreferenceScreen>

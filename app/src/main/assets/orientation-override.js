@@ -31,16 +31,15 @@
  * the moon timer pill) are anchored to the right edge. In a real landscape
  * viewport (~832 CSS px wide) the two never touch, but in our portrait
  * viewport (~384 px) they exceed the available width and collide. The bar is
- * pushed fully left (flush with the nav rail) and the right cluster is zoomed
- * slightly, so the timer no longer sits on top of the bar.
+ * pinned to the HUD's left edge and fitted to the measured space before the
+ * right-side controls. The right cluster is zoomed slightly as before.
  *
  * A second portrait-only fix (section 5) handles the game's wide windows
  * (Workshop, Shop, Squad, Quests, ...): they are two-column layouts that the
  * game lays out for landscape widths, and whose detail/action column is
- * literally hidden below the game's 640 CSS px `sm` breakpoint. Each open
- * modal is re-laid-out at that design width and scaled into the portrait
- * viewport with a transform, so both columns — including every action button —
- * stay visible and tappable.
+ * literally hidden below the game's 640 CSS px `sm` breakpoint. Full-screen
+ * menus are reflowed at their natural size, with stacked panes and scrolling
+ * where needed. Other oversized windows retain a scaled fallback.
  *
  * It is injected at document start (before any page script) and is idempotent:
  * a guard flag prevents double installation if injected more than once.
@@ -61,6 +60,11 @@
  * stays uniform. The game renders a wider world slice; the canvas CSS is
  * pinned back to the real viewport, which zooms the scene out slightly
  * (~83% on a 384 px phone) instead of cutting anything off.
+ * World-coordinate DOM overlays use that same display ratio so health
+ * labels and placement markers stay attached to the canvas sprites.
+ * Battles use a wider 640 px minimum for three Yakkamon on each side.
+ * The renderer is resized before scene start; other scenes retain 460 px.
+ * The optional top/bottom formation instead uses native portrait dimensions.
  *
  * The decision is made per read from documentElement.clientWidth/Height
  * (the real layout viewport), because at document-start the layout isn't
@@ -79,6 +83,10 @@
   window.__yakCameraSpoof = true;
 
   var MIN_CAMERA_W = 460;
+  var MIN_BATTLE_CAMERA_W = 640;
+  var yakBattleCamera = false;
+  var yakBattleSystem;
+  var yakTopBottomBattle = false;
   /* 460 leaves the leftmost bench Yakkamon ~13 CSS px clear of the edge on
      a 384 px phone (~18 px on narrower ones) at ~83% zoom. */
   var yakCamEarlyW = window.innerWidth;
@@ -89,8 +97,10 @@
     var d = document.documentElement;
     var w = (d && d.clientWidth) || 0;
     var h = (d && d.clientHeight) || 0;
+    var minimumWidth = yakBattleCamera
+      ? (yakTopBottomBattle ? w : MIN_BATTLE_CAMERA_W) : MIN_CAMERA_W;
     /* Pre-layout or landscape: report the real values, no spoof. */
-    if (!w || !h || h < w || w >= MIN_CAMERA_W) {
+    if (!w || !h || h < w || w >= minimumWidth) {
       return wantWidth ? (w || yakCamEarlyW) : (h || yakCamEarlyH);
     }
     if (!yakCamStyleDone) {
@@ -105,9 +115,236 @@
       }
     }
     if (wantWidth) {
-      return MIN_CAMERA_W;
+      return minimumWidth;
     }
-    return Math.round(h * MIN_CAMERA_W / w);
+    return Math.round(h * minimumWidth / w);
+  }
+
+  function yakWantsTopBottomBattle() {
+    var d = document.documentElement;
+    return d && d.clientHeight >= d.clientWidth && d.hasAttribute('data-yak-battle-tb');
+  }
+
+  function yakBattleRowHome(scene, side) {
+    var scale = scene.game.scale;
+    var width = scale.width * scale.zoom;
+    var height = scale.height * scale.zoom;
+    var count = side === 'player' ? scene.teamCap() : scene.order.enemy.length;
+    var direction = side === 'player' ? 1 : -1;
+    return {
+      x: Math.round(width / 2 + direction * scene.lineStep() * (Math.max(1, count) - 1) / 2),
+      y: Math.round(side === 'player' ? Math.min(height * 0.66, height - 180) : height * 0.32)
+    };
+  }
+
+  function yakHookBattleStage(scene, nativeHome) {
+    var ground = scene.ground;
+    if (ground && !ground.__yakRowStage) {
+      ground.__yakRowStage = true;
+      var place = ground.place;
+      var destroy = ground.destroy;
+      ground.place = function (viewport, artScale) {
+        var result = place.apply(this, arguments);
+        if (!scene.__yakTopBottomBattle) {
+          if (this.__yakBottomLane) this.__yakBottomLane.setVisible(false);
+          return result;
+        }
+        var enemy = scene.homeOf('enemy'), player = scene.homeOf('player');
+        var delta = enemy.y - nativeHome.call(scene, 'enemy').y;
+        var lane = this.lane;
+        lane.setY(lane.y + delta);
+        this.fill.setTilePosition(this.fill.tilePositionX, this.fill.tilePositionY - delta / artScale);
+        if (!this.__yakBottomLane) {
+          this.__yakBottomLane = scene.add.tileSprite(lane.x, lane.y, lane.width, lane.height, lane.texture.key, lane.frame.name)
+            .setOrigin(lane.originX, lane.originY).setDepth(lane.depth)
+            .setScrollFactor(lane.scrollFactorX, lane.scrollFactorY);
+        }
+        this.__yakBottomLane.setVisible(true).setPosition(lane.x, lane.y + player.y - enemy.y)
+          .setSize(lane.width, lane.height).setTileScale(lane.tileScaleX, lane.tileScaleY)
+          .setTilePosition(lane.tilePositionX, lane.tilePositionY);
+        return result;
+      };
+      ground.destroy = function () {
+        if (this.__yakBottomLane) {
+          this.__yakBottomLane.destroy();
+          this.__yakBottomLane = null;
+        }
+        return destroy.apply(this, arguments);
+      };
+    }
+    var designer = scene.designer;
+    if (designer && !designer.__yakRowStage) {
+      designer.__yakRowStage = true;
+      var layout = designer.layout;
+      designer.layout = function (point, artScale) {
+        if (scene.__yakTopBottomBattle) {
+          point = {x: point.x, y: point.y + scene.homeOf('enemy').y - nativeHome.call(scene, 'enemy').y};
+        }
+        return layout.call(this, point, artScale);
+      };
+    }
+  }
+
+  function yakHookBattleRows(scene) {
+    if (scene.__yakBattleRows) return true;
+    if (typeof scene.homeOf !== 'function' || typeof scene.placeStage !== 'function' ||
+        typeof scene.teamCap !== 'function' || typeof scene.lineStep !== 'function' ||
+        typeof scene.fighterOf !== 'function' || typeof scene.presentFast !== 'function' ||
+        typeof scene.presentCharge !== 'function' || typeof scene.throwPlanFor !== 'function') {
+      console.warn('[YakBrowser] Could not apply top/bottom battles: unsupported battle layout.');
+      return false;
+    }
+    scene.__yakBattleRows = true;
+    var home = scene.homeOf, stage = scene.placeStage;
+    scene.homeOf = function (side) {
+      return this.__yakTopBottomBattle ? yakBattleRowHome(this, side) : home.apply(this, arguments);
+    };
+    scene.placeStage = function () {
+      if (this.__yakTopBottomBattle) yakHookBattleStage(this, home);
+      return stage.apply(this, arguments);
+    };
+    var fighterOf = scene.fighterOf;
+    scene.fighterOf = function () {
+      var fighter = fighterOf.apply(this, arguments);
+      if (!fighter || fighter.__yakRowMotion) return fighter;
+      fighter.__yakRowMotion = true;
+      var here = fighter.here, jab = fighter.jab, lunge = fighter.lunge;
+      fighter.here = function () {
+        if (!scene.__yakTopBottomBattle) return here.apply(this, arguments);
+        var travel = -this.offset.x - this.knock.x;
+        this.place(this.home.x, this.home.y + this.offset.y + travel);
+        this.shadow.setY(Math.round(this.home.y + travel));
+      };
+      fighter.jab = function (distance, impact) {
+        return jab.call(this, scene.__yakTopBottomBattle && this.__yakStrikeDistance !== undefined
+          ? this.__yakStrikeDistance : distance, impact);
+      };
+      fighter.lunge = function (distance, windup, strike, impact) {
+        var target = this.__yakStrikeTarget;
+        delete this.__yakStrikeTarget;
+        if (scene.__yakTopBottomBattle && target) {
+          var from = this.centrePoint(), to = target.centrePoint();
+          distance = Math.hypot(to.x - from.x, to.y - from.y);
+        }
+        return lunge.call(this, distance, windup, strike, impact);
+      };
+      return fighter;
+    };
+    ['presentFast', 'presentCharge'].forEach(function (name) {
+      var present = scene[name];
+      scene[name] = function (event) {
+        var fighter = this.fighters.get(event.unitId), target = this.fighters.get(event.targetId);
+        if (!this.__yakTopBottomBattle || !fighter || !target) return present.apply(this, arguments);
+        if (name === 'presentCharge') {
+          if (event.move.power > 0 && event.move.reach === 'melee') fighter.__yakStrikeTarget = target;
+          return present.apply(this, arguments);
+        }
+        var from = fighter.centrePoint(), to = target.centrePoint();
+        fighter.__yakStrikeDistance = Math.hypot(to.x - from.x, to.y - from.y);
+        try {
+          return present.apply(this, arguments);
+        } finally {
+          delete fighter.__yakStrikeDistance;
+        }
+      };
+    });
+    var throwPlan = scene.throwPlanFor;
+    scene.throwPlanFor = function () {
+      if (!this.__yakTopBottomBattle) return throwPlan.apply(this, arguments);
+      // Reuse the game's range/obstruction rules along the vertical battle axis.
+      var view = Object.create(this);
+      view.fighters = new Map();
+      this.fighters.forEach(function (fighter, id) {
+        var projected = Object.create(fighter);
+        projected.homePoint = function () {
+          var point = fighter.homePoint();
+          return {x: point.y, y: point.x};
+        };
+        view.fighters.set(id, projected);
+      });
+      return throwPlan.apply(view, arguments);
+    };
+    return true;
+  }
+
+  function yakResizeSceneCamera(system) {
+    var scale = system.game.scale;
+    if (!scale || typeof scale.resize !== 'function' || !(scale.zoom > 0)) {
+      console.warn('[YakBrowser] Could not fit scene camera: unsupported renderer scale.');
+      return false;
+    }
+    var width = Math.round(yakCamSize(true) / scale.zoom);
+    var height = Math.round(yakCamSize(false) / scale.zoom);
+    if (scale.width !== width || scale.height !== height) scale.resize(width, height);
+    return true;
+  }
+
+  function yakStartSceneCamera(system) {
+    var battle = system.settings.key === 'DuelBattleScene';
+    if (system.settings.key === 'BootScene' || system.settings.key === 'ReactPageScene') return;
+    yakBattleSystem = battle ? system : null;
+    yakTopBottomBattle = !!(battle && yakWantsTopBottomBattle() && yakHookBattleRows(system.scene));
+    if (battle) {
+      system.scene.__yakTopBottomBattle = yakTopBottomBattle;
+    }
+    yakBattleCamera = battle;
+    yakResizeSceneCamera(system);
+  }
+
+  function yakApplyBattleRows() {
+    var system = yakBattleSystem;
+    if (!system || !system.isActive() || system.scene.phase !== 'prep') return;
+    var scene = system.scene;
+    var enabled = !!yakWantsTopBottomBattle();
+    if (enabled === yakTopBottomBattle || (enabled && !yakHookBattleRows(scene))) return;
+    yakTopBottomBattle = enabled;
+    scene.__yakTopBottomBattle = enabled;
+    scene.cancelBodyDrag();
+    if (!yakResizeSceneCamera(system)) return;
+    scene.cameras.main.centerOn(yakCamSize(true) / 2, yakCamSize(false) / 2);
+    scene.layout();
+    scene.standActives();
+    scene.syncHud();
+  }
+
+  var yakBattleSettings = new MutationObserver(yakApplyBattleRows);
+  yakBattleSettings.observe(document, {attributes: true, subtree: true, attributeFilter: ['data-yak-battle-tb']});
+
+  function yakHookSceneCamera(phaser) {
+    if (!phaser || !phaser.Scenes || !phaser.Scenes.Systems) {
+      console.warn('[YakBrowser] Could not fit battle camera: unsupported Phaser scenes.');
+      return;
+    }
+    var prototype = phaser.Scenes.Systems.prototype;
+    var start = prototype.start;
+    if (typeof start !== 'function') {
+      console.warn('[YakBrowser] Could not fit battle camera: scene start is unavailable.');
+      return;
+    }
+    if (start.__yakSceneCamera) return;
+    prototype.start = function () {
+      yakStartSceneCamera(this);
+      return start.apply(this, arguments);
+    };
+    prototype.start.__yakSceneCamera = true;
+  }
+
+  // Phaser exports its namespace before constructing the game. Hook the
+  // public scene lifecycle then, rather than resizing after battle UI mounts.
+  try {
+    var yakPhaser = window.Phaser;
+    if (yakPhaser) yakHookSceneCamera(yakPhaser);
+    Object.defineProperty(window, 'Phaser', {
+      configurable: true,
+      enumerable: true,
+      get: function () { return yakPhaser; },
+      set: function (value) {
+        yakPhaser = value;
+        yakHookSceneCamera(value);
+      }
+    });
+  } catch (e) {
+    console.warn('[YakBrowser] Could not register battle camera fitting:', e);
   }
 
   try {
@@ -225,20 +462,38 @@
 
   /* 4. Portrait layout fix: bottom bar vs. right-side button cluster ----------- */
   (function () {
-    // Measured at 384 CSS px viewport: item bar = 248 px, right cluster
-    // (moon timer + plant/paw/settings buttons) = 148 px — together 396 px,
-    // so they physically cannot coexist at full size in portrait. Two tweaks:
-    //
-    //   a) The item bar is nudged left so its left edge sits flush with the
-    //      left nav rail (x = 4 px) — as far left as the Items button allows.
-    //   b) The right cluster is zoomed to 78%, which pulls its left edge
-    //      (the moon timer pill) clear of the bar's right edge (~5-8 px gap).
-    //
-    // Both are applied only while the viewport is portrait. margin-left shifts
-    // the `left: 50%` bar without fighting its own `translate: -50%` centring;
-    // zoom scales the cluster subtree (incl. touch targets) as one piece.
-    var NUDGE_PX = -64;
+    // The tray width changes with game controls (the orb adds another 56px).
+    // Measure instead of assuming a 248px tray and a fixed -64px offset.
+    // Zoom the contents only when needed; the optional 1.18x enlargement on
+    // the tray still applies, but cannot push controls outside the HUD.
+    var EDGE_PX = 4;
+    var GAP_PX = 4;
     var CLUSTER_ZOOM = 0.78;
+    var TRAY = 'div[class*="absolute bottom-0 left-1/2"]:not([class*="z-20"])';
+    var GROUP = 'div.absolute.bottom-3.right-3.flex.items-center';
+    var style = document.createElement('style');
+    style.textContent =
+      '@media (orientation: portrait) {' +
+      GROUP + ' { zoom: ' + CLUSTER_ZOOM + ' !important; }' +
+      TRAY + ' { left: 0 !important; translate: none !important; }' +
+      TRAY + ':not([data-yak-bottom-fit]) { visibility: hidden !important; }' +
+      '}';
+    (document.head || document.documentElement).appendChild(style);
+
+    var observer;
+    var resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
+    var resizeTargets = [];
+
+    function observeSizes(targets) {
+      if (!resizeObserver) return;
+      for (var i = 0; i < resizeTargets.length; i++) {
+        if (targets.indexOf(resizeTargets[i]) === -1) resizeObserver.unobserve(resizeTargets[i]);
+      }
+      for (var j = 0; j < targets.length; j++) {
+        if (resizeTargets.indexOf(targets[j]) === -1) resizeObserver.observe(targets[j]);
+      }
+      resizeTargets = targets;
+    }
 
     function update() {
       try {
@@ -250,80 +505,396 @@
         // Landscape viewports keep the game's own (correct) layout.
         var portrait = vh >= vw;
 
-        // a) the big centred item bar (the look-alikes are 12 px label pills)
-        var bars = document.querySelectorAll(
-          'div[class*="left-1/2"][class*="bottom-0"]'
-        );
+        var bars = document.querySelectorAll(TRAY);
+        var targets = [];
         for (var i = 0; i < bars.length; i++) {
-          var r = bars[i].getBoundingClientRect();
-          if (r.height > 40 && r.width > 150) {
-            if (portrait) {
-              bars[i].style.setProperty('margin-left', NUDGE_PX + 'px', 'important');
-            } else {
-              bars[i].style.removeProperty('margin-left');
-            }
+          var bar = bars[i];
+          var r = bar.getBoundingClientRect();
+          if (!bar.hasAttribute('data-yak-bottom-fit') && !(r.height > 40 && r.width > 150)) {
+            continue;
+          }
+          var contents = bar.firstElementChild;
+          if (!contents) continue;
+          bar.style.removeProperty('margin-left');
+          contents.style.removeProperty('zoom');
+          targets.push(bar.parentElement);
+          if (!portrait) {
+            bar.removeAttribute('data-yak-bottom-fit');
             break;
           }
-        }
 
-        // b) the right-anchored cluster holding the moon timer + buttons
-        var clusters = document.querySelectorAll(
-          'div[class*="bottom-3"][class*="right-3"]'
-        );
-        for (var j = 0; j < clusters.length; j++) {
-          var cr = clusters[j].getBoundingClientRect();
-          if (cr.width > 100 && cr.height > 20) {
-            if (portrait) {
-              clusters[j].style.setProperty('zoom', String(CLUSTER_ZOOM), 'important');
-            } else {
-              clusters[j].style.removeProperty('zoom');
+          r = bar.getBoundingClientRect();
+          var hud = bar.parentElement.getBoundingClientRect();
+          var left = Math.max(EDGE_PX, hud.left);
+          var right = Math.min(vw - EDGE_PX, hud.right);
+          // Include fixed gear descendants when the clock is moved up, and
+          // the chat button when an enlarged tray reaches its row.
+          var controls = bar.parentElement.querySelectorAll(
+            'div[class*="bottom-3"][class*="right-3"], ' +
+            'div[class*="bottom-3"][class*="right-3"] > *, button'
+          );
+          for (var k = 0; k < controls.length; k++) {
+            if (bar.contains(controls[k])) continue;
+            targets.push(controls[k]);
+            var c = controls[k].getBoundingClientRect();
+            if (c.width && c.height && c.left > vw / 2 &&
+                c.top < r.bottom && c.bottom > r.top) {
+              right = Math.min(right, c.left - GAP_PX);
             }
+          }
+          var available = right - left;
+          if (available <= 0 || !r.width) {
+            console.warn('YakBrowser: no space available for the bottom tray.');
             break;
           }
+          var zoom = Math.min(1, available / r.width);
+          if (zoom < 1) contents.style.setProperty('zoom', String(zoom), 'important');
+          r = bar.getBoundingClientRect();
+          bar.style.setProperty('margin-left', (left - r.left) + 'px', 'important');
+          bar.setAttribute('data-yak-bottom-fit', '');
+          break;
         }
+        // Observe the HUD and external controls, not the tray whose size we
+        // change ourselves: fitting must not trigger a ResizeObserver loop.
+        observeSizes(targets);
       } catch (e) {
-        /* never let layout tweaks break the page */
+        console.warn('YakBrowser: bottom HUD layout failed.', e);
+      } finally {
+        // Discard our own style/marker mutations to avoid feeding the watcher.
+        if (observer) observer.takeRecords();
       }
     }
 
-    // The bar only exists once the game HUD has mounted, and the DOM is
-    // re-rendered by React, so poll cheaply and (re-)apply as needed.
-    setInterval(update, 2000);
+    // React mounts the HUD after document-start. Mutation delivery runs before
+    // paint, so the tray is first shown already fitted, without a delayed jump.
+    observer = new MutationObserver(update);
+    observer.observe(document, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'data-yak-clock-tl', 'data-yak-bar-lg']
+    });
     window.addEventListener('resize', update);
+    document.addEventListener('load', update, true);
+    if (document.fonts && typeof document.fonts.addEventListener === 'function') {
+      document.fonts.addEventListener('loadingdone', update);
+    }
     update();
+  })();
+
+  /* 4b. Catch celebration: native portrait layout, before its first paint. */
+  (function () {
+    if (window.__yakCaughtPortrait) return;
+    window.__yakCaughtPortrait = true;
+    var CAUGHT = '[data-yak-caught]';
+    var style = document.createElement('style');
+    style.textContent = [
+      '@media (orientation: portrait) and (max-width: 639.98px) {',
+      CAUGHT + ' {',
+      '  width: calc(100% - 32px) !important; min-width: 0 !important;',
+      '  height: calc(100vh - 64px) !important; max-height: 720px !important;',
+      '  transform: none !important; animation: none !important; zoom: 1 !important;',
+      '  align-items: stretch !important;',
+      '}',
+      CAUGHT + ' > button { height: 40px !important; }',
+      CAUGHT + ' > div[class*="w-[32rem]"] {',
+      '  width: 100% !important; height: 100% !important; min-height: 0 !important;',
+      '  margin-top: 0 !important;',
+      '}',
+      CAUGHT + ' > div[class*="w-[32rem]"] > div.bg-paper {',
+      '  flex: 1 1 0 !important; min-height: 0 !important;',
+      '}',
+      CAUGHT + ' div.h-52 {',
+      '  flex: 1 1 0 !important; height: auto !important; min-height: 0 !important;',
+      '  flex-direction: column !important; overflow-y: auto !important;',
+      '  overflow-x: hidden !important; gap: 12px !important; padding: 12px !important;',
+      '}',
+      CAUGHT + ' div.h-52 > div[class*="w-[34%]"] { width: 100% !important; }',
+      CAUGHT + ' div.h-52 > div[class*="w-[34%]"] > div:first-child {',
+      '  height: auto !important; min-height: 160px !important; padding-top: 20px !important;',
+      '}',
+      CAUGHT + ' div.h-52 > div[class*="w-[34%]"] > div:first-child > div[class*="w-2/5"] {',
+      '  max-width: 128px !important;',
+      '}',
+      CAUGHT + ' div.h-52 > .self-stretch { display: none !important; }',
+      CAUGHT + ' div.h-52 > div.flex-1.min-w-0 {',
+      '  flex: 0 0 240px !important; min-height: 0 !important; width: 100% !important;',
+      '}',
+      CAUGHT + ' div.h-10 { height: 96px !important; }',
+      CAUGHT + ' div.h-10 > div.absolute.inset-0.flex {',
+      '  flex-direction: column !important; justify-content: center !important;',
+      '  align-items: stretch !important; gap: 8px !important; padding: 8px !important;',
+      '}',
+      CAUGHT + ' div.h-10 > div.absolute.inset-0.flex > div {',
+      '  width: 100% !important; min-width: 0 !important; flex: 0 0 auto !important;',
+      '}',
+      // Keep late-loading fonts/icons from moving the nickname field.
+      CAUGHT + ' div.h-10 > div.absolute.inset-0.flex > div:first-child > :first-child {',
+      '  flex: 0 0 40% !important; min-width: 0 !important; overflow: hidden !important;',
+      '}',
+      CAUGHT + ' div.h-10 > div.absolute.inset-0.flex > div:first-child > div.relative {',
+      '  flex: 1 1 0 !important; min-width: 0 !important;',
+      '}',
+      CAUGHT + ' div.h-10 div.w-36 { width: 100% !important; min-height: 32px !important; }',
+      CAUGHT + ' div.h-10 > div.absolute.inset-0.flex > div:last-child > button {',
+      '  flex: 1 1 0 !important; min-height: 32px !important;',
+      '}',
+      '}'
+    ].join('\n');
+    (document.head || document.documentElement).appendChild(style);
+
+    function fitCaught() {
+      var d = document.documentElement;
+      if (!d || !d.clientWidth || !d.clientHeight) return;
+      var portrait = d.clientWidth < 640 && d.clientHeight > d.clientWidth;
+      var modals = document.querySelectorAll('div.animate-modal-in');
+      for (var i = 0; i < modals.length; i++) {
+        var modal = modals[i];
+        if (!modal.querySelector('div.h-52 > div[class*="w-[34%]"]') ||
+            !modal.querySelector('div.h-10 input')) continue;
+        if (portrait) {
+          // Replace only this card's legacy fit, including a popup already
+          // open when the script is installed. Other modals keep their fits.
+          var mark = modal.getAttribute('data-yak-fit') || '';
+          if (mark.indexOf('s=') === 0 || mark.indexOf('generic-s=') === 0) {
+            modal.style.removeProperty('width');
+            modal.style.removeProperty('transform');
+            modal.style.removeProperty('transform-origin');
+          }
+          modal.setAttribute('data-yak-caught', '');
+          modal.setAttribute('data-yak-fit', 'native');
+        } else if (modal.hasAttribute('data-yak-caught')) {
+          modal.removeAttribute('data-yak-caught');
+          modal.removeAttribute('data-yak-fit');
+        }
+      }
+    }
+    var observer = new MutationObserver(fitCaught);
+    observer.observe(document, {childList: true, subtree: true});
+    window.addEventListener('resize', fitCaught);
+    fitCaught();
   })();
 
   /* Shared helpers for the window-fit passes (sections 5 and 6). ----------- */
 
-  // True while a *running* animation (CSS or Web Animations API) targets
-  // `el` or anything inside it. Claiming a modal while it is flying into
-  // place measures a meaningless rect, and the claim is one-shot — the
-  // window then lives at the wrong spot/size for as long as it stays open
-  // (seen on the catch/celebration modal, whose contents FLIP in over
-  // ~600 ms). Engines without document.getAnimations (very old WebViews)
-  // report false and keep the previous claim-immediately behaviour.
-  function yakAnimationsRunning(el) {
-    try {
-      if (typeof document.getAnimations !== 'function') return false;
-      var list = document.getAnimations();
-      for (var i = 0; i < list.length; i++) {
-        if (list[i].playState !== 'running') continue;
-        var target = list[i].effect && list[i].effect.target;
-        if (target && (target === el || el.contains(target))) return true;
-      }
-    } catch (e) {
-      /* probing animations must never break the page */
+  var yakWindowFits = [];
+  var yakWindowObserver;
+  var yakWindowSizes;
+  var yakSizedWindows = [];
+  var yakFittingWindows = false;
+  var yakWindowStyle = document.createElement('style');
+  yakWindowStyle.textContent =
+    '[data-yak-modal-pending] { visibility: hidden !important; }\n' +
+    '@media (orientation: portrait) {\n' +
+    '  [data-yak-world-overlay] { zoom: var(--yak-world-zoom, 1); }\n' +
+    '  [data-yak-modal-fit] { transition-property: opacity !important; }\n' +
+    '  [data-yak-modal-fit].animate-modal-in { animation: none !important; }\n' +
+    '}\n' +
+    '@media (orientation: portrait) and (max-width: 639.98px) {\n' +
+    '  [data-yak-battle-hud] > div.absolute.left-1\\/2[class*="top-2"] { top: 64px !important; }\n' +
+    '  [data-yak-battle-hud] > div.absolute.right-3.bottom-2 {\n' +
+    '    left: 0 !important; right: 0 !important; justify-content: center !important;\n' +
+    '    pointer-events: none !important;\n' +
+    '  }\n' +
+    '  [data-yak-battle-hud] > div.absolute.right-3.bottom-2 > * { pointer-events: auto; }\n' +
+    '  [data-yak-battle-hud] > div.absolute.right-3.bottom-2 > :nth-child(2) {\n' +
+    '    position: absolute !important; right: 12px !important; bottom: 0 !important;\n' +
+    '  }\n' +
+    '}';
+  (document.head || document.documentElement).appendChild(yakWindowStyle);
+
+  function yakIsWorldAnchor(node) {
+    return node.classList.contains('flex') &&
+      node.classList.contains('-translate-x-1/2') &&
+      /px$/.test(node.style.left) && /px$/.test(node.style.top);
+  }
+
+  function yakIsWorldLayer(layer) {
+    if (!layer.classList.contains('fixed') ||
+        !layer.classList.contains('pointer-events-none') ||
+        layer.classList.contains('inset-safe-area')) return false;
+    if (yakIsWorldAnchor(layer)) return true;
+    if (!layer.classList.contains('inset-0')) return false;
+    for (var i = 0; i < layer.children.length; i++) {
+      if (yakIsWorldAnchor(layer.children[i])) return true;
     }
     return false;
   }
 
-  // Bounded "still animating in" check shared by sections 5 and 6: records
-  // when a modal was first seen and reports true only while it is both
-  // young AND animating, so a never-ending decorative animation inside a
-  // window cannot block its fit forever.
-  function yakSeenRecently(modal) {
-    if (!modal.__yakFitSeenAt) modal.__yakFitSeenAt = Date.now();
-    return Date.now() - modal.__yakFitSeenAt < 700 && yakAnimationsRunning(modal);
+  function yakFitWorldOverlays() {
+    var d = document.documentElement;
+    var root = document.getElementById('react-root');
+    if (!root || !d.clientWidth || !d.clientHeight) return;
+    var canvas = document.querySelector('canvas');
+    var logicalWidth = canvas && /px$/.test(canvas.style.width)
+      ? parseFloat(canvas.style.width) : window.innerWidth;
+    var zoom = d.clientHeight >= d.clientWidth && logicalWidth > 0
+      ? d.clientWidth / logicalWidth : 1;
+    if (d.style.getPropertyValue('--yak-world-zoom') !== String(zoom)) {
+      d.style.setProperty('--yak-world-zoom', String(zoom));
+    }
+    for (var i = 0; i < root.children.length; i++) {
+      var layer = root.children[i];
+      if (yakIsWorldLayer(layer)) {
+        if (!layer.hasAttribute('data-yak-world-overlay')) layer.setAttribute('data-yak-world-overlay', '');
+        // Older fits treated world-coordinate health bars as dialogs.
+        var nodes = [layer];
+        for (var j = 0; j < layer.children.length; j++) nodes.push(layer.children[j]);
+        for (var k = 0; k < nodes.length; k++) {
+          var node = nodes[k];
+          var mark = node.getAttribute('data-yak-fit') || '';
+          if (mark.indexOf('s=') === 0) node.style.removeProperty('width');
+          if (mark.indexOf('s=') === 0 || mark.indexOf('generic-s=') === 0) {
+            node.style.removeProperty('transform');
+            node.style.removeProperty('transform-origin');
+          }
+          node.removeAttribute('data-yak-fit');
+          node.removeAttribute('data-yak-modal-fit');
+          node.removeAttribute('data-yak-modal-pending');
+        }
+      } else {
+        layer.removeAttribute('data-yak-world-overlay');
+      }
+      var battleHud = layer.classList.contains('inset-safe-area') &&
+        layer.querySelector('div.pointer-events-auto.absolute[class*="top-1.5"].left-3');
+      if (battleHud) {
+        if (!layer.hasAttribute('data-yak-battle-hud')) layer.setAttribute('data-yak-battle-hud', '');
+      }
+      else layer.removeAttribute('data-yak-battle-hud');
+    }
+  }
+
+  function yakFitWindows() {
+    if (yakFittingWindows) return;
+    yakFittingWindows = true;
+    try {
+      yakFitWorldOverlays();
+      for (var i = yakSizedWindows.length - 1; i >= 0; i--) {
+        if (!document.contains(yakSizedWindows[i])) {
+          yakWindowSizes.unobserve(yakSizedWindows[i]);
+          yakSizedWindows.splice(i, 1);
+        }
+      }
+      for (var j = 0; j < yakWindowFits.length; j++) yakWindowFits[j]();
+    } finally {
+      // Attribute/style writes made by our own fit must not schedule another
+      // fit; React's later mutations and genuine size changes still do.
+      if (yakWindowObserver) yakWindowObserver.takeRecords();
+      yakFittingWindows = false;
+    }
+  }
+
+  function yakWatchWindows(fit) {
+    yakWindowFits.push(fit);
+    if (!yakWindowObserver) {
+      yakWindowObserver = new MutationObserver(yakFitWindows);
+      yakWindowObserver.observe(document, {
+        childList: true, subtree: true, attributes: true,
+        attributeFilter: ['class', 'style']
+      });
+      if (typeof ResizeObserver === 'function') {
+        yakWindowSizes = new ResizeObserver(yakFitWindows);
+      }
+      window.addEventListener('resize', yakFitWindows);
+      document.addEventListener('load', yakFitWindows, true);
+      document.addEventListener('error', yakFitWindows, true);
+      if (document.fonts && document.fonts.addEventListener) {
+        document.fonts.addEventListener('loadingdone', yakFitWindows);
+        document.fonts.addEventListener('loadingerror', yakFitWindows);
+      }
+    }
+    yakFitWindows();
+  }
+
+  // Finish finite entrance/FLIP geometry before measuring. Opacity-only
+  // fades, decorative loops and the catch card's own reveals remain intact.
+  function yakSettleWindow(modal) {
+    try {
+      if (typeof document.getAnimations !== 'function') return;
+      var list = document.getAnimations();
+      for (var i = 0; i < list.length; i++) {
+        var animation = list[i];
+        var effect = animation.effect;
+        var target = effect && effect.target;
+        if (typeof CSSTransition === 'function' && animation instanceof CSSTransition) continue;
+        if (animation.playState !== 'running' || animation.playbackRate <= 0 ||
+            !target || !(target === modal || modal.contains(target))) continue;
+        if (!isFinite(effect.getComputedTiming().endTime)) continue;
+        var frames = effect.getKeyframes();
+        var geometry = /^(transform|translate|scale|rotate|width|height|top|left|right|bottom|margin.*|padding.*|fontSize|lineHeight|zoom|flexBasis|gridTemplate.*|gap)$/;
+        for (var k = 0; k < frames.length; k++) {
+          if (Object.keys(frames[k]).some(function (key) { return geometry.test(key); })) {
+            animation.finish();
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[YakBrowser] Could not settle window entrance geometry:', e);
+    }
+  }
+
+  function yakPrepareWindow(modal) {
+    if (modal.hasAttribute('data-yak-caught')) return true;
+    modal.setAttribute('data-yak-modal-fit', '');
+    if (yakWindowSizes && yakSizedWindows.indexOf(modal) < 0) {
+      yakSizedWindows.push(modal);
+      yakWindowSizes.observe(modal);
+    }
+    yakSettleWindow(modal);
+    // Force layout to request the fonts used by newly mounted text.
+    modal.getBoundingClientRect();
+    var images = modal.querySelectorAll('img');
+    var loading = [];
+    for (var i = 0; i < images.length; i++) {
+      if (!images[i].complete && images[i].loading !== 'lazy') loading.push(images[i]);
+    }
+    var fontsLoading = document.fonts && document.fonts.status === 'loading';
+    if ((!loading.length && !fontsLoading) || modal.__yakResourceTimeout) {
+      if (!loading.length && !fontsLoading) modal.__yakResourceTimeout = false;
+      modal.removeAttribute('data-yak-modal-pending');
+      return true;
+    }
+    modal.setAttribute('data-yak-modal-pending', '');
+    if (modal.__yakResourceWait) return false;
+    modal.__yakResourceWait = true;
+    var cleanups = [];
+    var done = false;
+    var timer;
+    function ready(timedOut) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      for (var j = 0; j < cleanups.length; j++) cleanups[j]();
+      modal.__yakResourceWait = false;
+      if (timedOut) {
+        modal.__yakResourceTimeout = true;
+        console.warn('[YakBrowser] Window resources timed out; fitting the available content.');
+      }
+      if (document.contains(modal)) yakFitWindows();
+    }
+    var waits = loading.map(function (image) {
+      return new Promise(function (resolve) {
+        function loaded(event) {
+          if (event.type === 'error') console.warn('[YakBrowser] Window image failed to load.');
+          resolve();
+        }
+        image.addEventListener('load', loaded);
+        image.addEventListener('error', loaded);
+        cleanups.push(function () {
+          image.removeEventListener('load', loaded);
+          image.removeEventListener('error', loaded);
+        });
+      });
+    });
+    if (fontsLoading) waits.push(document.fonts.ready);
+    timer = setTimeout(function () { ready(true); }, 3000);
+    Promise.all(waits).then(function () { ready(false); }, function (error) {
+      console.warn('[YakBrowser] Window resources failed:', error);
+      ready(true);
+    });
+    return false;
   }
 
   // Centres `modal` in the viewport and scales it down to fit, wherever
@@ -333,8 +904,8 @@
   // negative) offset, so assuming the box starts at (0,0) — as the old
   // section 5c math did — dropped scaled windows at the bottom-left, half
   // off-screen (the catch/celebration modal). Idempotent: calling it on
-  // every pass re-centres after animations settle and follows viewport
-  // changes. Returns the applied scale (clamped to 1), or null when the
+  // every event-driven pass follows content and viewport changes.
+  // Returns the applied scale (clamped to 1), or null when the
   // box cannot be measured.
   function yakPlaceScaled(modal, vw, vh) {
     try {
@@ -363,9 +934,9 @@
   // These windows are two-column layouts designed for landscape widths. Below
   // the game's `sm` breakpoint (640 CSS px) the right-hand detail/action
   // column is literally `hidden ... sm:flex` — gone — and what remains is a
-  // narrow list floating over the map. Portrait only, each open modal is
-  // handled once (a data attribute marks it; React unmounts modals when they
-  // close, so the marker disappears with them):
+  // narrow list floating over the map. Full-screen shells are rechecked as
+  // React swaps their contents, so tab changes retain the portrait layout.
+  // Other modals use the following measured fallback:
   //
   //   a) re-flow the window the way the game would if it had been built for
   //      phones: stack the two columns vertically and reveal the hidden
@@ -383,8 +954,8 @@
   //      old math assumed the layout box started at (0,0), but flex-centred
   //      backdrops (e.g. the catch/"joined your team" celebration modal)
   //      place it at a negative offset, which dropped scaled windows at the
-  //      bottom-left, half off-screen. Windows are also not claimed while
-  //      they are still animating in, since mid-flight rects are garbage.
+  //      bottom-left, half off-screen. Entrance geometry and resources are
+  //      settled before the first visible fit, not by a later timer.
   //
   // Small dialogs (Welcome Back, confirmations) measure within the viewport
   // and are left untouched.
@@ -392,6 +963,146 @@
     var FIT_ATTR = 'data-yak-fit';
     var DESIGN_W = 640; // the game's sm breakpoint: both columns, natural size
     var FIT_MARGIN = 4; // px of slack before a window counts as overflowing
+
+    var style = document.createElement('style');
+    style.textContent = [
+      '@media (orientation: portrait) and (max-width: 639.98px) {',
+      '  [data-yak-portrait-shell] div.grid.shrink-0[class*="grid-cols-"] {',
+      '    grid-template-columns: minmax(0, 1fr) auto !important;',
+      '  }',
+      '  [data-yak-portrait-shell] div.grid.shrink-0[class*="grid-cols-"] > div.min-w-0.justify-center {',
+      '    grid-row: 2 !important; grid-column: 1 / -1 !important;',
+      '    justify-content: flex-start !important; overflow: visible !important;',
+      '    max-width: 100% !important; padding: 0 !important;',
+      '  }',
+      '  [data-yak-portrait-shell] div.grid.shrink-0[class*="grid-cols-"] > div.min-w-0.justify-center > div {',
+      '    width: 100% !important; max-width: 100% !important;',
+      '  }',
+      '  [data-yak-portrait-shell] div.grid.shrink-0[class*="grid-cols-"] > div.min-w-0.justify-center > div > div {',
+      '    width: 100% !important; max-width: 100% !important; height: auto !important;',
+      '    min-height: 36px; flex-wrap: wrap !important; gap: 4px !important; padding: 4px !important;',
+      '  }',
+      '  [data-yak-portrait-shell] div.grid.shrink-0[class*="grid-cols-"] > div.min-w-0.justify-center button {',
+      '    flex: 1 1 auto !important;',
+      '  }',
+      '  [data-yak-portrait-shell] div.grid.shrink-0[class*="grid-cols-"] > div.justify-self-end {',
+      '    grid-column: 2 !important; grid-row: 1 !important;',
+      '  }',
+      '  [data-yak-portrait-columns] {',
+      '    flex-direction: column !important; gap: 8px !important; min-height: 0 !important;',
+      '  }',
+      '  [data-yak-portrait-columns] > :first-child {',
+      '    width: 100% !important; max-height: 36% !important;',
+      '    min-height: 0 !important; flex: 0 1 36% !important;',
+      '  }',
+      '  [data-yak-portrait-columns] > [class*="sm:flex"] {',
+      '    display: flex !important; min-height: 0 !important;',
+      '    flex: 1 1 0 !important; overflow-y: auto !important;',
+      '  }',
+      '  [data-yak-battle-columns] { flex-direction: column !important; overflow-y: auto !important; }',
+      '  [data-yak-battle-columns] > div { width: 100% !important; flex: 0 0 auto !important; }',
+      '  [data-yak-pvp-columns] {',
+      '    flex-direction: column !important; gap: 8px !important;',
+      '    height: 100% !important; min-height: 0 !important; overflow: hidden !important;',
+      '  }',
+      '  [data-yak-pvp-columns] > :first-child {',
+      '    width: 100% !important; min-height: 0 !important;',
+      '    max-height: 45% !important; flex: 0 1 45% !important;',
+      '  }',
+      '  [data-yak-pvp-columns] > :first-child > :not(.min-h-0) { flex-shrink: 0 !important; }',
+      '  [data-yak-pvp-columns] > :first-child div.flex.items-center.justify-between { flex-wrap: wrap !important; }',
+      '  [data-yak-pvp-columns] > :nth-child(2) {',
+      '    display: block !important; min-height: 0 !important;',
+      '    flex: 1 1 0 !important; overflow-y: auto !important;',
+      '  }',
+      '  [data-yak-pvp-columns] > :only-child { max-height: 100% !important; flex: 1 1 0 !important; }',
+      '  [data-yak-pvp] > div.flex.items-stretch { flex-direction: column !important; }',
+      '  [data-yak-pvp] > div.grid.grid-cols-3 { grid-template-columns: minmax(0, 1fr) !important; }',
+      '  [data-yak-card-tabs] { height: 76px !important; }',
+      '  [data-yak-card-tabs] > div.absolute.inset-0 > div.flex.w-full {',
+      '    flex-direction: column !important; align-items: flex-start !important; gap: 0 !important;',
+      '  }',
+      '  [data-yak-card-tabs] > div.absolute.inset-0 > div.flex.w-full > div {',
+      '    max-width: 100% !important; flex-shrink: 1 !important;',
+      '    justify-content: flex-start !important; overflow-x: auto !important;',
+      '  }',
+      '  [data-yak-card-footer], [data-yak-market-footer] { height: 84px !important; }',
+      '  [data-yak-card-footer] > div.absolute.inset-0,',
+      '  [data-yak-market-footer] > div.absolute.inset-0 {',
+      '    flex-direction: column !important; justify-content: center !important;',
+      '    gap: 4px !important; padding: 4px 8px !important;',
+      '  }',
+      '  [data-yak-market-footer] > div.absolute.inset-0 > div:first-child {',
+      '    width: 100% !important; flex: 0 0 auto !important;',
+      '    justify-content: center !important; margin: 0 !important;',
+      '  }',
+      '  [data-yak-market-footer] input.w-16 { min-width: 64px !important; }',
+      '}',
+      '@media (orientation: portrait) and (max-width: 359px) {',
+      '  [data-yak-battle-columns] div.bg-paper.rounded-full.min-h-12 {',
+      '    flex-wrap: wrap !important; border-radius: 1rem !important; padding: 8px !important;',
+      '  }',
+      '}'
+    ].join('\n');
+    (document.head || document.documentElement).appendChild(style);
+
+    function fitPortraitShell(modal) {
+      var wrappers = modal.querySelectorAll('[class*="max-w-4xl"], [class*="max-w-6xl"]');
+      for (var i = 0; i < wrappers.length; i++) {
+        var wrapper = wrappers[i];
+        var children = wrapper.children;
+        if (children.length === 2 && children[1].classList.contains('sm:flex')) {
+          wrapper.setAttribute('data-yak-portrait-columns', '');
+        } else {
+          wrapper.removeAttribute('data-yak-portrait-columns');
+        }
+        if (children.length === 2 && children[0].classList.contains('w-56') &&
+            children[1].classList.contains('min-w-0')) {
+          wrapper.setAttribute('data-yak-battle-columns', '');
+        } else {
+          wrapper.removeAttribute('data-yak-battle-columns');
+        }
+        var pvp = wrapper.closest('[class*="max-w-5xl"]') &&
+          children.length >= 1 && children.length <= 2 &&
+          children[0].classList.contains('w-62') &&
+          (children.length === 1 || children[1].classList.contains('min-w-0'));
+        if (pvp) wrapper.setAttribute('data-yak-pvp-columns', '');
+        else wrapper.removeAttribute('data-yak-pvp-columns');
+      }
+
+      var records = modal.querySelectorAll('[class*="flex-[2]"]');
+      for (var j = 0; j < records.length; j++) {
+        var row = records[j].parentElement;
+        var dashboard = row && row.parentElement;
+        if (row && row.classList.contains('items-stretch') && dashboard &&
+            dashboard.querySelector('div.grid.grid-cols-3')) {
+          dashboard.setAttribute('data-yak-pvp', '');
+        }
+      }
+
+      var headers = modal.querySelectorAll('div.bg-paper > div.relative.shrink-0.h-12');
+      for (var h = 0; h < headers.length; h++) {
+        var headerRow = headers[h].querySelector('div.flex.w-full.items-center.justify-between');
+        if (headerRow && headerRow.children.length === 2 &&
+            headerRow.children[1].querySelector('button')) {
+          headers[h].setAttribute('data-yak-card-tabs', '');
+        }
+      }
+
+      var footers = modal.querySelectorAll('div.bg-paper > div.relative.shrink-0.h-13');
+      for (var f = 0; f < footers.length; f++) {
+        var footerRow = footers[f].querySelector('div.absolute.inset-0.flex');
+        var quantity = footerRow && footerRow.querySelector('input.w-16');
+        if (quantity && quantity.getBoundingClientRect().width < 63) {
+          footers[f].setAttribute('data-yak-market-footer', '');
+        }
+        if (footerRow && footerRow.children.length === 2 &&
+            footerRow.children[1].querySelectorAll('button').length >= 2 &&
+            footerRow.scrollWidth > footerRow.clientWidth + 1) {
+          footers[f].setAttribute('data-yak-card-footer', '');
+        }
+      }
+    }
 
     // Stacks the wrapper's columns, reveals the hidden detail pane and lets
     // the window scroll internally. Refs to everything touched are kept on
@@ -442,6 +1153,7 @@
         var layers = root.children;
         for (var i = 0; i < layers.length; i++) {
           var layer = layers[i];
+          if (yakIsWorldLayer(layer)) continue;
           if (getComputedStyle(layer).position !== 'fixed') continue;
           var lr = layer.getBoundingClientRect();
           // Only full-viewport fixed layers (modal backdrops) count; the HUD
@@ -452,6 +1164,19 @@
           for (var k = 0; k < modals.length; k++) {
             var modal = modals[k];
             if (getComputedStyle(modal).display === 'none') continue;
+            if (!yakPrepareWindow(modal)) continue;
+            // The game's full-screen shell keeps its title in a separate
+            // overlay. Scaling the shell leaves that title and the side HUD
+            // behind, so reflow its current two-column content instead.
+            var shell = vw < DESIGN_W &&
+              modal.classList.contains('h-full') && modal.classList.contains('w-full') &&
+              modal.querySelector('div.grid.shrink-0[class*="grid-cols-"]');
+            if (shell) {
+              modal.setAttribute('data-yak-portrait-shell', '');
+              fitPortraitShell(modal);
+              modal.setAttribute(FIT_ATTR, 'native');
+              continue;
+            }
             // Already scaled by an earlier pass: re-place it from its layout
             // rect every pass (idempotent), so a claim that was computed
             // while the window was still animating in — or a later layout
@@ -469,11 +1194,6 @@
               modal.removeAttribute(FIT_ATTR);
             }
             if (modal.hasAttribute(FIT_ATTR)) continue;
-            // Never claim a window that is still flying/spinning into place:
-            // the measurement below would be meaningless (bounded, so
-            // decorative loops cannot block the fit).
-            if (yakSeenRecently(modal)) continue;
-
             /* a) portrait-native: stack the columns, reveal the detail pane */
             var applied = applyPortraitLayout(modal);
 
@@ -487,14 +1207,15 @@
               if (ar.width > 0 && ar.right > maxRight) maxRight = ar.right;
             }
             var mrect = modal.getBoundingClientRect();
-            var fullBleed = mrect.width >= vw - 1 || mrect.height >= vh - 1;
+            var fullBleed = (mrect.width >= vw - 1 && mrect.width <= vw + 1) ||
+              (mrect.height >= vh - 1 && mrect.height <= vh + 1);
             // Content may end exactly on the screen edge — a full-bleed
             // shell's content column does — so only a real spill past the
             // viewport counts as overflow. A plain card keeps the old rule
             // and wants FIT_MARGIN of breathing room as well. The height of
             // a full-bleed shell is handled by the scroll set up in
             // applyPortraitLayout, or by the game's own scroller.
-            var fits = maxRight <= vw + FIT_MARGIN;
+            var fits = maxRight <= vw + FIT_MARGIN && mrect.width <= vw + FIT_MARGIN;
             if (mrect.width < vw - 1) {
               fits = fits && mrect.right <= vw - FIT_MARGIN;
             }
@@ -532,26 +1253,11 @@
           }
         }
       } catch (e) {
-        /* never let layout tweaks break the page */
+        console.warn('[YakBrowser] Portrait window fitting failed:', e);
       }
     }
 
-    // Modals mount/unmount constantly (React), so poll cheaply and also react
-    // to DOM changes for a near-instant fit when a window opens.
-    setInterval(fitModals, 800);
-    window.addEventListener('resize', fitModals);
-    try {
-      var reactRoot = document.getElementById('react-root');
-      if (reactRoot) {
-        var mo = new MutationObserver(function () {
-          setTimeout(fitModals, 60);
-        });
-        mo.observe(reactRoot, { childList: true, subtree: true });
-      }
-    } catch (e) {
-      /* the observer is an optimisation; the poll still runs */
-    }
-    fitModals();
+    yakWatchWindows(fitModals);
   })();
 
   /* 5b. Narrow-portrait polish for rows sized for the landscape canvas ----- */
@@ -637,6 +1343,7 @@
         var layers = root.children;
         for (var i = 0; i < layers.length; i++) {
           var layer = layers[i];
+          if (yakIsWorldLayer(layer)) continue;
           if (getComputedStyle(layer).position !== 'fixed') continue;
           var lr = layer.getBoundingClientRect();
           // Only full-viewport fixed layers (modal backdrops) count; the HUD
@@ -647,6 +1354,7 @@
           for (var k = 0; k < modals.length; k++) {
             var modal = modals[k];
             if (getComputedStyle(modal).display === 'none') continue;
+            if (!yakPrepareWindow(modal)) continue;
             var mark = modal.getAttribute(FIT_ATTR);
             // Already scaled by an earlier pass: re-place from the layout
             // rect every pass (idempotent) so mid-animation claims and later
@@ -656,10 +1364,6 @@
               continue;
             }
             if (mark && mark !== 'noscale') continue; // section 5 owns it
-            // Never claim a window that is still animating into place —
-            // the rect below would be meaningless (bounded; see section 5).
-            if (!mark && yakSeenRecently(modal)) continue;
-
             var mrect = modal.getBoundingClientRect();
             if (mrect.width <= vw - FIT_MARGIN && mrect.height <= vh - FIT_MARGIN) {
               if (!mark) modal.setAttribute(FIT_ATTR, 'generic-fit');
@@ -677,24 +1381,10 @@
           }
         }
       } catch (e) {
-        /* never let layout tweaks break the page */
+        console.warn('[YakBrowser] Overflow window fitting failed:', e);
       }
     }
 
-    // Same rhythm as section 5: poll + DOM observer, portrait only.
-    setInterval(fitOverflowing, 800);
-    window.addEventListener('resize', fitOverflowing);
-    try {
-      var reactRoot = document.getElementById('react-root');
-      if (reactRoot) {
-        var mo = new MutationObserver(function () {
-          setTimeout(fitOverflowing, 60);
-        });
-        mo.observe(reactRoot, { childList: true, subtree: true });
-      }
-    } catch (e) {
-      /* the observer is an optimisation; the poll still runs */
-    }
-    fitOverflowing();
+    yakWatchWindows(fitOverflowing);
   })();
 })();

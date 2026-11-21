@@ -1,7 +1,9 @@
 # YakBrowser ProGuard/R8 rules.
 
-# The app uses no reflection, JSON binding, or JavaScript interfaces,
-# so no custom keep rules are required yet.
+# AndroidX inflates this preference by its XML class name.
+-keep class com.yak.browser.NotificationPermissionPreference {
+    public <init>(android.content.Context, android.util.AttributeSet);
+}
 
 # Keep line numbers in stack traces for Play Console crash reports.
 -keepattributes SourceFile,LineNumberTable

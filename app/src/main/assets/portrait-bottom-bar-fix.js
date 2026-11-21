@@ -8,11 +8,12 @@
 //
 // The bar has room to grow now that the clock group can be moved out of
 // the bottom-right (see portrait-clock-fix.js). This bumps it a modest
-// ~18% so the slots are easier to hit, while keeping its left edge pinned
-// and leaving clear air before the right-side chat/gear column.
+// ~18% so the slots are easier to hit. The orientation script measures the
+// resulting tray and caps its contents' zoom when the bottom-right controls
+// leave too little room, keeping the Items button and orb on-screen.
 //
-// Opt-in via the app's "Enlarge bottom bar" setting (default OFF): the
-// rules below only apply while the app has set data-yak-bar-lg on <html>.
+// Enabled with the independent "Enlarge bottom bar" setting (default OFF):
+// the rules below use data-yak-bar-lg on <html>, not the clock attribute.
 // The style element is installed once per document; the app flips the
 // attribute live (on page start and on resume), so toggling the setting
 // grows or reverts the bar immediately without reloading the game. With
@@ -43,7 +44,7 @@
   }
   window.__yakBottomBarFix = true;
 
-  var TRAY = 'div[class*="absolute bottom-0 left-1/2"]';
+  var TRAY = 'div[class*="absolute bottom-0 left-1/2"]:not([class*="z-20"])';
   var style = document.createElement('style');
   style.textContent =
     '@media (orientation: portrait) {' +

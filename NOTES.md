@@ -9,9 +9,9 @@ is <https://yakkamon.com/play>.
 |---|---|
 | Game page | `MainActivity` hosts a single fullscreen `WebView` loading `https://yakkamon.com/play`. |
 | Navigation policy | `yakkamon.com` and all subdomains load inside the app. Any other link opens in the user's default browser via a **Chrome Custom Tab**, so the game WebView never navigates away. Other schemes (`javascript:`, `file:`, `intent:`) are blocked. |
-| Landscape enforcement | Two layers, active while the **orientation lock** setting is ON (default): (1) the activity is locked to **portrait** (`screenOrientation="portrait"`), so the game is played holding the phone normally; (2) `assets/orientation-override.js` is injected **at document start** (via `WebViewCompat.addDocumentStartJavaScript`) and tells the site `window.orientation`, `screen.orientation.type/.angle/.lock()` and `matchMedia('(orientation: …)')` that the device is in **landscape** — the game only runs when it believes it's landscape, so this white lie lets it play in portrait. |
-| Immersive fullscreen | System bars hidden with swipe-from-edge reveal; screen kept on (`FLAG_KEEP_SCREEN_ON`). |
-| Settings page | Floating **gear button** (top-left corner, kept clear of the game's currency chips and the camera cutout; proper cog icon — white fill + dark outline, `res/drawable/ic_settings.xml`) opens `SettingsActivity` (AndroidX Preference). Switches: **Lock orientation** (key `orientation_lock`, default ON: app locked to portrait + landscape spoof to the site; OFF: follows the device sensor, no spoof) and **Settings access** (key `settings_access`, default OFF: hides the floating gear; applied via `applySettingsAccess()` in `MainActivity.onCreate`/`onResume`). Changing orientation lock rebuilds the browser screen on return. Also: **Keep screen on** (key `keep_screen_on`, default ON: `FLAG_KEEP_SCREEN_ON` via `applyKeepScreenOn()`), a **Reload game** row (sets `pending_reload`; `MainActivity.onResume` consumes it and `recreate()`s — the flag hand-off works from every settings entry point, including the App info row), and an **About** category (version from `PackageManager` — no BuildConfig needed, Privacy Policy in a Custom Tab, `mailto:` support). |
+| Landscape enforcement | Orientation lock defaults OFF: the activity follows the device sensor and the site receives real orientation. When enabled after a warning, the activity locks to **portrait** and `assets/orientation-override.js` is injected **at document start** (via `WebViewCompat.addDocumentStartJavaScript`), reporting landscape through `window.orientation`, `screen.orientation` and orientation media queries so the landscape-designed game can run in portrait. |
+| Immersive fullscreen | System bars hidden with swipe-from-edge reveal; `FLAG_KEEP_SCREEN_ON` applies only when Keep screen on is enabled (default OFF). |
+| Settings page | The floating gear opens `SettingsActivity` with Main and Notifications tabs (AndroidX Preference and Material TabLayout). Every Main toggle defaults OFF; existing saved choices are preserved. Settings access hides the gear when enabled. Changing orientation lock rebuilds the browser screen on return. Reload game uses the existing `pending_reload` hand-off. About contains version, Privacy Policy, and support contact. |
 | Settings entry points | Settings stay reachable even with the gear hidden, on every OEM: (1) **static "Settings" + "Reload" long-press shortcuts** on the app icon (`res/xml/shortcuts.xml` + a `src/debug` override carrying the `.debug` applicationId; note the attrs are `android:shortcutShortLabel`/`shortcutLongLabel` — plain `shortLabel`/`longLabel` do not exist in the framework and fail AAPT, and the label attrs require `@string/` references); (2) **`APPLICATION_PREFERENCES` + `NOTIFICATION_PREFERENCES` intent filter** on the exported `SettingsActivity` (same pattern as SFL-Browser) — Samsung One UI shows a **"Configure in &lt;app&gt;"** row on the App info page (under Usage), verified live on device. |
 | Robustness | Error panel with Retry on main-frame load failures; WebView renderer crashes handled via `onRenderProcessGone`; DOM storage + autoplay audio enabled for the game. |
 | Updates & rating | `WhatsNew.kt` holds per-release bullet notes; on a fresh start the app compares the stored `last_seen_version` against the current versionName and shows a one-time AlertDialog listing everything newer (numeric version compare, so 1.0.10 > 1.0.9; fresh installs just record the version silently). The Play **In-App Review** flow fires on the 5th session and every 10th after that — 8 s after a fresh start, never stacked on the What's New dialog, skipped in debug builds, and a silent no-op on non-Play installs (`com.google.android.play:review:2.0.2`). Add a `WhatsNew` block per release. |
@@ -30,13 +30,35 @@ Measured on the real page at 384×832 CSS px:
 | What looks overlapped | What it actually is | Handling |
 |---|---|---|
 | Clock timers half off the right edge, dark pills clipped at the bottom-left, the "SAFARI ZONE" sign behind the left rail | **Canvas-drawn game-world content** (`elementsFromPoint` returns the `<canvas>`) — world-space objects at the edge of the visible map slice. Identical behaviour in normal landscape play. | Inherent to the game; nothing to adjust from the app. |
-| Right-side plant/chat/settings buttons + moon timer pill sitting on the item bar | **Genuine portrait-only DOM collision**: bar is `left-1/2`-centred (248 px) while the right cluster is `right-3`-anchored (148 px) — 396 px of widgets in a 384 px viewport. The timer pill is the *left-most piece of the right cluster* (anchored right), so nudging the bar alone never moved it. | Fixed in `orientation-override.js` (portrait only): bar pushed fully left (`margin-left: -64px` → left edge x=4, flush with the nav rail, per user request) **and** the right cluster zoomed to 0.78 → ~5-8 px gap between the timer and the bar. |
+| Right-side controls overlapping the item bar, or Items clipped off the left edge | **Genuine portrait-only DOM collision**: the centred tray grows from 248 to 304 px when the orb is present. The old fixed `margin-left: -64px` then puts Items at x=-24 on a 384 px viewport. | Fixed in `orientation-override.js` (portrait only): measure the actual tray (including optional enlargement), pin it to the safe HUD left edge, and cap its contents' zoom to leave a 4 px gap before overlapping right-side controls. The right cluster retains its 0.78 zoom. Moved-clock fixed gear and chat buttons are included in the fit; landscape clears the tray overrides. |
 | `99+` count badges touching the moon `04:35` timer | The game's own bar layout — identical Tailwind base classes in landscape (the `lg:`/`xl:` variants never trigger at either width). | Their design; left untouched. |
 | Our settings gear over the currency chips (and near the camera cutout) | Our overlay, anchored `top|end` under the chips. | Moved to `top|start` + inset-aware margins (padded by systemBars/cutout like the game's own HUD). |
 
 Note: CDP `Emulation.setDeviceMetricsOverride` is ignored by this WebView
 build, so landscape-baseline comparisons must be done by reasoning about the
 anchoring classes (or physically rotating with the lock OFF).
+
+## Arrival alerts
+
+The WebSocket watcher reads `state.hunting.grounds[id].naturalCallAt` using
+`serverTime`, which is still the current map's zone countdown. Clover Meadow
+uses the internal ground ID `safari`; notification labels also cover Bramble
+Fields, Mistmere Marsh, Hollowshade Ruins, and Emberpeak Ridge.
+
+Tentative farm reminders use `state.hunting.arrivals.schedule.dueAt`. This is
+an opportunity to spawn a visitor, not a guarantee: the notification says
+**Check your farm** rather than claiming a Yakkamon arrived. A standing visitor,
+removed schedule, or elapsed due time cancels the saved farm reminder when the
+next state arrives. The farm timer has its own reserved alarm ID and is
+deduplicated independently from zone timers.
+
+Both kinds use **Yakkamon arrival alerts** and the same notification channel
+and exact/approximate alarm setting. Opening the game learns/resyncs timers;
+already-scheduled reminders can fire after the game closes, but cannot learn
+subsequent server changes without a connection. Approximate alarms may be late.
+
+Run the focused watcher tests with Node.js:
+`node --test app\src\test\js\zone-alerts.test.cjs`.
 
 ## TODO — Push notifications (phase 2)
 
@@ -340,18 +362,145 @@ intended. Mechanism (orientation-override.js section 5):
   any layout offset; both section 5c and section 6 now use it. Both
   sections re-place `s=`/`generic-s=`-marked windows on EVERY pass
   (idempotent), so a mid-animation claim self-corrects once settled and
-  viewport changes are followed. `yakSeenRecently()` stops either
-  section from claiming a window while a running CSS/WAAPI animation
-  targets it or its subtree (bounded to 700 ms from first sight so
-  decorative loops can't block the fit; engines without
-  `document.getAnimations` — old WebViews — keep the previous
-  claim-immediately behaviour, now safe anyway thanks to re-placement).
-- The celebration modal is responsive by design (`w-[34%]` info column
-  + `flex-1 min-w-0` skills list) — with a settled measurement it simply
-  fits and is marked `noscale`, i.e. left at the game's own native
-  layout. Verification needs a live catch (one-shot modal): window must
-  appear centred at native size; Squad/Shop/Dojo windows should be
-  unaffected (they take the stacked `native` path).
+  viewport changes are followed. The original bounded animation wait
+  has since been replaced by the pre-paint fitting described below.
+- Follow-up on the caught/celebration popup: the generic fit still waited
+  for the entrance animation, visibly shrank the card after it appeared,
+  and failed to reserve space for its negatively offset close button.
+  Section 4b now identifies this card by its info-column and nickname-input
+  structure (not English text), claims it as `native` in a document-start
+  MutationObserver before paint, and applies scoped portrait CSS.
+  The viewport-bounded card stacks info above skills at native text size,
+  keeps a scrollable body and skills list, and puts the nickname field
+  and action buttons on separate footer rows. Close-button clearance is
+  reserved outside the card. Its outer entrance scaling is suppressed;
+  decorative child reveals remain. The fixed, viewport-capped height
+  avoids recentring as content animations complete. The sprite panel
+  reserves top padding and grows for taller sprites, with sprite width
+  capped so stacking the info column cannot push the creature into the
+  title. Close-button height and nickname-label space are reserved even
+  before images/fonts load. Landscape restores the game's original
+  layout; other windows retain the shared fitter.
+
+**Pre-paint menu and popup fitting (follow-up).** Sections 5 and 6 no
+longer wait for entrance animations or run on 800 ms polls/60 ms delayed
+observers. A shared document-start MutationObserver watches the document,
+including a React root mounted later, and runs both fit passes before
+paint. ResizeObserver, resource events and font events handle subsequent
+content changes; our own style writes are drained to avoid feedback.
+Finite entrance/FLIP animations that change geometry are finished before
+measurement, while opacity-only fades, decorative loops and the catch
+card's own reveals remain intact. Outer-window geometry transitions are
+disabled so fitting itself cannot animate; child control transitions
+remain unchanged. A window whose images or fonts are
+still loading is hidden until it can be fitted and shown at its final
+size; a logged three-second timeout prevents stalled resources from
+permanently hiding the UI. Genuine full-viewport shells retain native
+scrolling; oversized plain cards are not misclassified as full-bleed
+merely because they exceed the viewport. Squad's previous settled layout
+is preserved, but its columns and controls now use that layout from their
+first visible frame.
+
+**Battle scene alignment (follow-up).** The widened camera renders a
+460 px logical scene into a 384 px phone viewport, but battle health bars
+and placement markers were still using unscaled scene coordinates.
+Additionally, the generic popup fitter mistook a right-edge health bar
+for an overflowing dialog and recentered it at a different size.
+World-coordinate `pointer-events-none fixed` layers are now excluded
+from modal fitting and zoomed using the canvas's current logical width.
+Their original positions remain untouched, and any previous generic fit
+is removed. The existing document-start observer updates this projection
+before paint when scene nodes or renderer dimensions change; screen-space
+HUD, menu backdrops and menu titles are not projected.
+In narrow portrait battle HUDs, the placement instruction gets its own
+row below the timer/speed controls, Fight is centered at the bottom,
+and settings stays at the right. Landscape retains the game's layout.
+These changes affect presentation only, not battle placements or actions.
+World layers are recognized by pixel-positioned, horizontally centered
+flex anchors rather than their stacking level. Opening the Yakkamon
+picker lowers the battle layers from `z-50` to `z-30`; this must not
+remove their projection or let the dialog fitter claim health bars again.
+
+**Three-per-side battle camera fit (follow-up).** Six positions spaced
+96 logical pixels apart put the outer centres at -10 and 470 in the old
+460 px viewport. Battle scenes now use a 640 px minimum logical width,
+with proportional height, retaining the game's below-768 art tier.
+The document-start camera script hooks Phaser's public
+`Scenes.Systems.start` lifecycle when its namespace is exported, and
+resizes the renderer before `DuelBattleScene` creates its sprites.
+The farm and safari restore their previous 460 px minimum; starting the
+separate React UI scene does not change the active world's camera.
+Landscape is unchanged. DOM world overlays continue to use the canvas's
+logical width, keeping health bars, effectiveness labels, and picker
+markers aligned. No battle lineup, combat, or saved zoom settings change.
+
+**Optional top-vs-bottom battles.** The default-off `top_bottom_battles`
+setting puts enemies in an upper horizontal row and the player's team
+in a lower row in portrait. This mode uses the actual viewport rather
+than the extra battle camera widening, so sprites and health controls
+remain at native size. Native slot order, empty-slot picking, dragging,
+combat targeting, and home anchors are retained. The ground lanes and
+backdrop move with the rows; melee movement uses the vertical axis, and
+ranged flight planning uses vertical separation without changing damage
+or orders. Sprites and controls remain upright.
+The saved preference is published at document start alongside the HUD
+settings. Changing it applies immediately in preparation, without a
+reload or lineup changes. Once combat starts, the current formation is
+kept until the next battle. Landscape and farm layouts remain unchanged;
+turning it off restores the side-by-side battle camera.
+
+**Settings tabs and next battle challenge alerts.** Settings now separates
+Main from Notifications, retaining all existing preference keys and values.
+Arrival alerts, the default-off `battle_notifications` toggle, exact timing,
+and the sample notification are all in Notifications. Exact timing remains
+available when either arrival or battle alerts are enabled.
+`battle-alerts.js` reads the Battles view's committed React timer model
+(`nextBoardAt` and server-adjusted `now`) rather than parsing countdown text
+or duplicating the site's daily-refresh rules. Open Battles to learn the next
+refresh. A single persisted Android alarm can notify while the app is closed;
+the receiver does not schedule further refreshes. New battle timer reports
+are accepted only while MainActivity is resumed, so a background WebView
+cannot silently chain tomorrow's alarm. Open Battles again to learn and arm
+the next refresh. When Battles reports a finished catalogue or no timer, it
+cancels the reminder; leaving the menu does not. Battle alerts have their own Android
+notification channel and do not depend on arrival alerts. Approximate timing
+can be delayed by Android; exact timing requires the existing alarm permission.
+
+**Defaults, portrait warning, and permission control.** Main toggles default
+off in both the preference XML and AppPreferences; notification defaults are
+unchanged. Upgrades do not reset saved selections. Switching orientation lock
+from off to on requires confirmation that forcing portrait may have unforeseen
+effects for which the development team is not responsible. Cancel/back leaves
+the setting off; Continue enables it. The warning is a DialogFragment so it
+survives activity recreation.
+Notifications includes a Grant notification permission row with an Enable
+button while permission or app-level notifications are blocked. Granted is
+disabled and faded when Android allows notifications. State refreshes after
+permission results and returning from system settings. Previously denied
+permissions and app-level blocking route to Android notification settings;
+Android 7 uses App info. This control does not change alert toggle selections.
+Focused Android UI tests use Robolectric without changing device permissions:
+`.\gradlew.bat testDebugUnitTest --tests com.yak.browser.SettingsActivityTest`.
+
+**Initial unofficial-app disclaimer.** MainActivity shows the existing
+unofficial/independent-community, no-affiliation/no-endorsement
+disclaimer until the user presses I understand. A persisted acknowledgement
+suppresses it on subsequent launches, including upgrades; existing installs
+without that acknowledgement see it once too. A DialogFragment preserves the
+unacknowledged popup across recreation. Update notes, notification permission
+requests, and the rating timer start only after acknowledgement.
+Test startup sequencing and settings together with
+`.\gradlew.bat testDebugUnitTest --tests com.yak.browser.MainActivityTest --tests com.yak.browser.SettingsActivityTest`.
+
+**PvP See all lists.** Leaderboard, Rivals, and History share a fixed-width
+list/detail wrapper that left only 32 px for the detail card on a 384 px
+phone. The portrait shell fitter now recognizes that wrapper while loading
+and after details arrive. It stacks a full-width, internally scrolling list
+above a full-width, internally scrolling detail card, wraps the filter/rank
+controls, and gives an empty/loading list the full available height.
+The existing pre-paint/resource settling applies; no extra scaling, timers,
+or changes to leaderboard, rivalry, battle, or replay actions are introduced.
+Landscape retains the site's side-by-side layout.
 
 ### Portrait gym/battle camera fit — leftmost Yakkamon cut off (v1.0.9)
 
@@ -407,15 +556,16 @@ intended. Mechanism (orientation-override.js section 5):
   active. Note `Page.addScriptToEvaluateOnNewDocument` silently no-ops
   on these old WebViews — test scripts must be app-injected.
 
-### Portrait HUD toggles - clock top-left + enlarged bottom bar (v1.0.10)
+### Portrait HUD settings - independent clock position and bottom-bar size
 
-Two independent, opt-in, portrait-only presentation toggles. Both use the
-same mechanism: a dormant CSS asset injected always-on with the beta
-guard (`betaGuardEffective()` in MainActivity), gated behind an attribute
-on `<html>`; MainActivity flips the attribute in `onPageStarted` (fresh
-document starts un-attr-ed) and `onResume` (live toggle - no reload or
-activity recreate, unlike the orientation lock). Prefs default **false**,
-landscape is never touched (real `@media (orientation: portrait)`).
+Two independent, opt-in, portrait-only settings: **Clock top-left** moves the
+clock; **Enlarge bottom bar** controls item-bar enlargement. Both dormant CSS assets
+are injected with the beta guard (`betaGuardEffective()` in MainActivity)
+and use separate `data-yak-clock-tl` / `data-yak-bar-lg` attributes on `<html>`.
+MainActivity applies both saved values at document-start and updates them on
+resume without reloading. Both default to **false**; landscape is unchanged.
+The bar setting reuses `enlarge_bottom_bar`, preserving any previously saved
+independent value rather than inheriting the clock setting.
 
 **Clock top-left** (`assets/portrait-clock-fix.js`, attr
 `data-yak-clock-tl`, pref `clock_top_left`)
@@ -431,12 +581,10 @@ landscape is never touched (real `@media (orientation: portrait)`).
      (screen space - the right pill row is screen-stable while the HUD
      frame drifts with safe-area changes), the scale lives on INNER only,
      gear stays viewport-anchored bottom-right.
-  2. The site writes `zoom: 0.78 !important` INLINE on GROUP via JS (its
-     small-screen shrink - the source of every odd sub-size: h-7.5
-     rendering 23, size-6 rendering 19, computed 49px rendering 38).
-     Inline !important outranks author !important, so CSS cannot remove
-     it; all lengths are expressed in GROUP's LOCAL units (screen px /
-     0.78) and render at exactly the screen target.
+  2. The app applies `zoom: 0.78 !important` in document-start CSS for the
+     portrait group (including the moved clock). The old two-second JS poll
+     applied it after the HUD was already visible, causing a size/position
+     jump. All lengths are in GROUP's LOCAL units (screen px / 0.78).
 - Geometry (S24 Ultra, CSS 384x832), validated live over CDP:
   - GROUP fixed top 43.59 / left 5.13 -> renders 34/4 = the topmost
     right pill's row (that pill measures `[278,34,90,32]`).
@@ -453,8 +601,8 @@ landscape is never touched (real `@media (orientation: portrait)`).
   is off on the reference device. Constants are S24-specific; on other
   phones re-measure (the site's zoom factor could differ too).
 
-**Enlarge bottom bar** (`assets/portrait-bottom-bar-fix.js`, attr
-`data-yak-bar-lg`, pref `enlarge_bottom_bar`)
+**Enlarge bottom bar** (`assets/portrait-bottom-bar-fix.js`,
+attr `data-yak-bar-lg`, pref `enlarge_bottom_bar`)
 
 - Tray = `div[class*="absolute bottom-0 left-1/2"]` (Items button + the
   row of useable-item slots), natural `[4, 761, 248, 58.64]`.
@@ -466,7 +614,17 @@ landscape is never touched (real `@media (orientation: portrait)`).
   the added transform layers cleanly.
 - Verified over CDP: OFF = 58.64 (original), ON = 69.2, survives
   `location.reload()` (attribute re-applied in onPageStarted), OFF again
-  reverts. Independent of the clock toggle - both can be on at once.
+  reverts. Enlargement and clock position can be switched independently.
+- These are reference measurements for the older 248 px tray. The portrait
+  orientation script now caps the contents' zoom using the measured available
+  space, including the orb and the current clock position; enlargement is
+  retained only where it fits without clipping or overlapping other controls.
+- HUD styles are installed at document-start. The portrait tray is left-anchored
+  in CSS and remains invisible only until its first successful measurement.
+  A MutationObserver fits it at React mount before paint; external-control
+  ResizeObserver notifications, resource/font loads, and viewport changes
+  keep it fitted without a two-second polling delay. The fitter discards its
+  own DOM mutation records and does not resize its ResizeObserver targets.
 
 ## Build / run
 

@@ -14,11 +14,9 @@
    The selector pins GROUP by its Tailwind anchoring classes; !important
    beats the loaded site stylesheet and any inline resize styles.
 
-   THE SITE'S ZOOM: the game writes `zoom: 0.78 !important` INLINE on
-   GROUP (its small-screen shrink — the source of every odd sub-size
-   here: h-7.5 rendering 23, size-6 rendering 19, computed 49px
-   rendering 38). Inline !important outranks author !important, so CSS
-   cannot remove it. Every length below is therefore in the group's
+   PORTRAIT ZOOM: the app applies `zoom: 0.78 !important` in document-start
+   CSS, not in a delayed layout poll. The moved clock uses the same factor
+   from its very first render. Every length below is in the group's
    LOCAL units = screen px / 0.78, and renders at exactly the screen
    target (validated live over CDP on the reference device). If the
    site ever changes the factor or the reference viewport, rescale.
@@ -58,6 +56,7 @@
   style.textContent =
     '@media (orientation: portrait) {' +
     '  html[data-yak-clock-tl] ' + GROUP + ' {' +
+    '    zoom: 0.78 !important;' +
     '    position: fixed !important;' +
     '    top: 43.59px !important;' +
     '    left: 5.13px !important;' +

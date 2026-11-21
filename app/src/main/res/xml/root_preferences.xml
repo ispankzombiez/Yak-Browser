@@ -2,7 +2,7 @@
 <PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <SwitchPreferenceCompat
-        app:defaultValue="true"
+        app:defaultValue="false"
         app:key="orientation_lock"
         app:summaryOff="Follows device rotation — real orientation sent to the site"
         app:summaryOn="Game always stays in portrait (site is told it&#8217;s landscape)"
@@ -16,7 +16,7 @@
         app:title="Settings access" />
 
     <SwitchPreferenceCompat
-        app:defaultValue="true"
+        app:defaultValue="false"
         app:key="keep_screen_on"
         app:summaryOff="Screen may sleep while the game is open"
         app:summaryOn="Screen stays awake during play"
@@ -26,15 +26,22 @@
         app:defaultValue="false"
         app:key="clock_top_left"
         app:summaryOff="Clock stays in the bottom-right corner"
-        app:summaryOn="Clock group moves to the top-left (portrait only — landscape unchanged)"
+        app:summaryOn="Clock moves to the top-left (portrait only — landscape unchanged)"
         app:title="Clock top-left" />
 
     <SwitchPreferenceCompat
         app:defaultValue="false"
         app:key="enlarge_bottom_bar"
-        app:summaryOff="Items bar at the site&#8217;s original size"
-        app:summaryOn="Items bar enlarged ~18% for easier taps (portrait only — landscape unchanged)"
+        app:summaryOff="Items bar is not enlarged"
+        app:summaryOn="Items bar enlarges up to ~18% for easier taps (portrait only — landscape unchanged)"
         app:title="Enlarge bottom bar" />
+
+    <SwitchPreferenceCompat
+        app:defaultValue="false"
+        app:key="top_bottom_battles"
+        app:summaryOff="Teams battle left vs right"
+        app:summaryOn="Your team below, enemies above, without the extra battle zoom-out (portrait only). Changes apply in preparation, or next battle if combat has started."
+        app:title="Top vs bottom battles" />
 
     <Preference
         app:key="reload_game"

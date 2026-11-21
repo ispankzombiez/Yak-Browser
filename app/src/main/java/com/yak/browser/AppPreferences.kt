@@ -7,10 +7,10 @@ import androidx.preference.PreferenceManager
 object AppPreferences {
 
     /**
-     * When true (default), the app is locked to portrait and the site is told
+     * When true, the app is locked to portrait and the site is told
      * the device is in landscape (so the game runs while held in portrait).
      * When false, the app follows the device sensor and the page gets real
-     * orientation values.
+     * orientation values. Default false.
      */
     const val KEY_ORIENTATION_LOCK = "orientation_lock"
 
@@ -22,26 +22,46 @@ object AppPreferences {
     const val KEY_SETTINGS_ACCESS = "settings_access"
 
     /**
-     * When true (default), the game screen keeps the device awake while it is
-     * in front. When false, normal system sleep applies.
+     * When true, the game screen keeps the device awake while it is
+     * in front. When false (default), normal system sleep applies.
      */
     const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
 
     /**
      * When true, the site's clock group (clock pill + the two icons in the
      * bottom-right corner) is moved to the top-left corner — portrait
-     * screens only; landscape is never affected. Default false: the group
+     * screens only; landscape is never affected. Default false: the clock
      * stays where the site puts it.
      */
     const val KEY_CLOCK_TOP_LEFT = "clock_top_left"
 
-    /**
-     * When true, the site's bottom HUD items bar (Items button + the row
-     * of useable-item slots) is enlarged ~18% for easier one-handed taps —
-     * portrait screens only; landscape is never affected. Default false:
-     * the bar stays at the site's original size.
-     */
+    /** Enlarges the portrait items bar independently of the clock. Default false. */
     const val KEY_ENLARGE_BOTTOM_BAR = "enlarge_bottom_bar"
+
+    const val KEY_TOP_BOTTOM_BATTLES = "top_bottom_battles"
+
+    /**
+     * When true (default), a notification fires when new Yakkamon arrive in
+     * a hunting zone, plus tentative farm-visitor reminders (scheduled
+     * from the game's own times). Needs notification permission on Android 13+.
+     */
+    const val KEY_ZONE_NOTIFICATIONS = "zone_notifications"
+
+    /** One alert for the next challenge refresh learned from the Battles timer. */
+    const val KEY_BATTLE_NOTIFICATIONS = "battle_notifications"
+
+    /**
+     * When true, arrival and battle alarms are exact (needs the "Alarms & reminders"
+     * permission on Android 12+; falls back to inexact without it). When
+     * false (default), they are inexact: Android may delay them to save
+     * battery, but no special permission is needed.
+     */
+    const val KEY_EXACT_ALARMS = "exact_alarms"
+
+    /** Set once the notification permission prompt has been shown. */
+    const val KEY_NOTIFICATION_PERMISSION_ASKED = "notification_permission_asked"
+
+    const val KEY_DISCLAIMER_ACKNOWLEDGED = "disclaimer_acknowledged"
 
     /**
      * One-shot flag set by the "Reload game" actions (settings row or the
@@ -75,7 +95,7 @@ object AppPreferences {
 
     fun isOrientationLockEnabled(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
-            .getBoolean(KEY_ORIENTATION_LOCK, true)
+            .getBoolean(KEY_ORIENTATION_LOCK, false)
 
     fun isSettingsAccessHidden(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
@@ -83,7 +103,7 @@ object AppPreferences {
 
     fun isKeepScreenOn(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
-            .getBoolean(KEY_KEEP_SCREEN_ON, true)
+            .getBoolean(KEY_KEEP_SCREEN_ON, false)
 
     fun isClockTopLeft(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
@@ -92,6 +112,40 @@ object AppPreferences {
     fun isEnlargeBottomBar(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
             .getBoolean(KEY_ENLARGE_BOTTOM_BAR, false)
+
+    fun isTopBottomBattles(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_TOP_BOTTOM_BATTLES, false)
+
+    fun isZoneNotificationsEnabled(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_ZONE_NOTIFICATIONS, true)
+
+    fun isBattleNotificationsEnabled(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_BATTLE_NOTIFICATIONS, false)
+
+    fun isExactAlarms(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_EXACT_ALARMS, false)
+
+    fun wasNotificationPermissionAsked(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, false)
+
+    fun setNotificationPermissionAsked(context: Context) {
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .edit().putBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, true).apply()
+    }
+
+    fun isDisclaimerAcknowledged(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_DISCLAIMER_ACKNOWLEDGED, false)
+
+    fun acknowledgeDisclaimer(context: Context) {
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .edit().putBoolean(KEY_DISCLAIMER_ACKNOWLEDGED, true).apply()
+    }
 
     fun requestReload(context: Context) {
         PreferenceManager.getDefaultSharedPreferences(context)

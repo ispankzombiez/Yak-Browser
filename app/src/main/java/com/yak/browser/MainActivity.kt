@@ -1,13 +1,20 @@
 package com.yak.browser
 
 import android.annotation.SuppressLint
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.app.Dialog
 import android.content.pm.ApplicationInfo
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -31,6 +38,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.fragment.app.DialogFragment
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.google.android.play.core.review.ReviewManagerFactory
@@ -38,12 +47,12 @@ import com.google.android.play.core.review.ReviewManagerFactory
 /**
  * The whole app: a single fullscreen WebView pointed at the Yakkamon game.
  *
- * Orientation note: with the orientation lock ON (default), the activity is
+ * Orientation note: with the orientation lock ON, the activity is
  * locked to **portrait** so the game can be held and played one-handed, while
  * [ORIENTATION_SCRIPT] is injected at document start to tell the site the
  * device is in **landscape**. The game refuses to run in portrait (it shows a
  * "rotate your phone" gate), so it must be told a white lie about the
- * orientation. With the lock OFF the app follows the device sensor and the
+ * orientation. With the lock OFF (default) the app follows the device sensor and the
  * page receives real orientation values (no spoof is installed).
  */
 class MainActivity : AppCompatActivity() {
@@ -60,7 +69,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * The exact portrait-state script last registered as document-start
      * (null = none). Compared by [installPortraitState] so the state is
-     * re-registered only when the toggles actually change.
+     * re-registered only when the HUD toggles actually change.
      */
     private var portraitStateRegistered: String? = null
 
@@ -76,13 +85,15 @@ class MainActivity : AppCompatActivity() {
      * orientation and whether the landscape spoof is injected at all. Captured
      * at onCreate and re-checked in onResume to detect settings changes.
      */
-    private var orientationLockEnabled = true
+    private var orientationLockEnabled = false
 
     /** True when the spoof should be injected (lock on), regardless of method. */
     private var spoofDesired = false
 
     /** The currently showing What's New dialog, if any. */
     private var whatsNewDialog: AlertDialog? = null
+    private var startupDialogsContinued = false
+    private var reviewSessions: Int? = null
 
     /** Cached copy of the orientation override script (injected per navigation as fallback). */
     private val orientationScript: String by lazy {
@@ -112,7 +123,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Cached copy of the portrait bottom-bar sizing fix (see
      * assets/portrait-bottom-bar-fix.js): grows the bottom HUD items bar
-     * ~18% for easier one-handed taps. Always-on and unconditional,
+     * ~18% for easier one-handed taps when "Enlarge bottom bar" is enabled,
      * portrait only.
      */
     private val portraitBottomBarScript: String by lazy {
@@ -128,6 +139,21 @@ class MainActivity : AppCompatActivity() {
         assets.open(PORTRAIT_CLOCK_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
     }
 
+    /**
+     * Cached copy of the arrival watcher (see assets/zone-alerts.js):
+     * reports hunting-zone timers and tentative farm reminders over [ZONE_BRIDGE].
+     */
+    private val zoneAlertsScript: String by lazy {
+        assets.open(ZONE_ALERTS_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    }
+
+    private val battleAlertsScript: String by lazy {
+        assets.open(BATTLE_ALERTS_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    }
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     /** Debug-only QA script (see assets/debug-camera-test.js); never shipped. */
     private val cameraTestScript: String by lazy {
         assets.open(CAMERA_TEST_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
@@ -135,6 +161,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        supportFragmentManager.setFragmentResultListener(DISCLAIMER_RESULT, this) { _, _ ->
+            window.decorView.post { continueStartupDialogs(showUpdates = true) }
+        }
 
         // Let Chrome DevTools (chrome://inspect) attach to this app's WebView in
         // debug builds — used to diagnose page layout issues on a real device.
@@ -188,7 +217,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         configureWebView()
-
+        installZoneBridge()
         // Register the current toggle state as document-start FIRST, so the
         // clock/bar attributes are on <html> before the beta-guard injects
         // the dormant CSS that references them — eliminates any attribute
@@ -237,10 +266,47 @@ class MainActivity : AppCompatActivity() {
             // has had time to load. A reload recreates with saved state, so
             // it never reaches this block (it isn't a new session).
             if (savedInstanceState == null) {
-                val sessions = AppPreferences.incrementSessionCount(this)
-                maybeShowWhatsNew()
-                window.decorView.postDelayed({ maybeAskForReview(sessions) }, REVIEW_DELAY_MS)
+                reviewSessions = AppPreferences.incrementSessionCount(this)
             }
+        }
+        if (!AppPreferences.isDisclaimerAcknowledged(this)) {
+            if (supportFragmentManager.findFragmentByTag(DISCLAIMER_TAG) == null) {
+                StartupDisclaimerDialog().show(supportFragmentManager, DISCLAIMER_TAG)
+            }
+        } else {
+            continueStartupDialogs(showUpdates = savedInstanceState == null)
+        }
+    }
+
+    class StartupDisclaimerDialog : DialogFragment() {
+        override fun onCreate(savedInstanceState: Bundle?) {
+            super.onCreate(savedInstanceState)
+            isCancelable = false
+        }
+
+        override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
+            AlertDialog.Builder(requireContext())
+                .setTitle(R.string.disclaimer_title)
+                .setMessage(R.string.disclaimer_message)
+                .setPositiveButton(R.string.disclaimer_acknowledge) { _, _ ->
+                    AppPreferences.acknowledgeDisclaimer(requireContext())
+                    parentFragmentManager.setFragmentResult(DISCLAIMER_RESULT, Bundle())
+                }
+                .create()
+    }
+
+    private fun continueStartupDialogs(showUpdates: Boolean) {
+        if (startupDialogsContinued || isFinishing || isDestroyed) return
+        startupDialogsContinued = true
+        if (showUpdates) maybeShowWhatsNew()
+        val updates = whatsNewDialog
+        if (updates?.isShowing == true) {
+            updates.setOnDismissListener { maybeAskNotificationPermission() }
+        } else {
+            maybeAskNotificationPermission()
+        }
+        reviewSessions?.let { sessions ->
+            window.decorView.postDelayed({ maybeAskForReview(sessions) }, REVIEW_DELAY_MS)
         }
     }
 
@@ -275,7 +341,7 @@ class MainActivity : AppCompatActivity() {
                 if (spoofDesired && !documentStartInstalled) {
                     view?.evaluateJavascript(effectiveScript(), null)
                 }
-                // Fresh document: (re-)apply the portrait toggle attributes
+                // Fresh document: (re-)apply the independent portrait HUD attributes
                 // — a redundant same-value no-op when document-start state
                 // is installed (it was already applied before the first
                 // paint), the actual path on providers without it. The
@@ -403,7 +469,49 @@ class MainActivity : AppCompatActivity() {
         } else {
             betaGuardScript
         }
-        return "$guard\n$portraitPopupScript\n$portraitBottomBarScript\n$portraitClockScript"
+        return "$guard\n$portraitPopupScript\n$portraitBottomBarScript\n$portraitClockScript\n$zoneAlertsScript\n$battleAlertsScript"
+    }
+
+    /**
+     * Receives arrival and next-battle-refresh times from the page. The listener is
+     * restricted to yakkamon.com origins and the main frame; the payload is
+     * untrusted page input and is validated in [ZoneNotifier].
+     */
+    private fun installZoneBridge() {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            Log.w("YakBrowser", "This WebView does not support the notification bridge.")
+            return
+        }
+        try {
+            WebViewCompat.addWebMessageListener(
+                webView,
+                ZONE_BRIDGE,
+                setOf("https://yakkamon.com", "https://*.yakkamon.com")
+            ) { _, message, _, isMainFrame, _ ->
+                val data = message.data
+                if (isMainFrame && data != null) {
+                    ZoneNotifier.onArrivalsReported(
+                        applicationContext, data,
+                        lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                    )
+                }
+            }
+        } catch (e: RuntimeException) {
+            Log.w("YakBrowser", "Could not install the notification bridge.", e)
+        }
+    }
+
+    /** Asks once for the Android 13+ notification permission. */
+    private fun maybeAskNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (!AppPreferences.isZoneNotificationsEnabled(this) &&
+            !AppPreferences.isBattleNotificationsEnabled(this)) return
+        if (AppPreferences.wasNotificationPermissionAsked(this)) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            == PackageManager.PERMISSION_GRANTED
+        ) return
+        AppPreferences.setNotificationPermissionAsked(this)
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     /**
@@ -438,9 +546,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * The portrait toggles as a self-applying script: sets or removes BOTH
-     * opt-in attributes on <html>, synchronously when the document element
-     * already exists (the document-start path — before the first paint) and
+     * Portrait layout settings as a self-applying script: sets or removes
+     * clock, enlargement and battle attributes on <html>, synchronously when the document
+     * element already exists (the document-start path — before the first paint) and
      * through an immediate retry loop otherwise (the onPageStarted fallback,
      * where the parser may not have created <html> yet — a bare eval there
      * used to throw silently and leave the UI in the wrong state until the
@@ -449,13 +557,15 @@ class MainActivity : AppCompatActivity() {
     private fun portraitStateScript(): String {
         val clock = AppPreferences.isClockTopLeft(this)
         val bar = AppPreferences.isEnlargeBottomBar(this)
+        val battles = AppPreferences.isTopBottomBattles(this)
         return (
             "(function f(){var d=document.documentElement;" +
                 "if(!d){setTimeout(f,0);return;}" +
                 "try{" +
                 (if (clock) "d.setAttribute('data-yak-clock-tl','1');" else "d.removeAttribute('data-yak-clock-tl');") +
                 (if (bar) "d.setAttribute('data-yak-bar-lg','1');" else "d.removeAttribute('data-yak-bar-lg');") +
-                "}catch(e){}})();"
+                (if (battles) "d.setAttribute('data-yak-battle-tb','1');" else "d.removeAttribute('data-yak-battle-tb');") +
+                "}catch(e){console.warn('[YakBrowser] Could not apply portrait settings:',e);}})();"
             )
     }
 
@@ -463,7 +573,7 @@ class MainActivity : AppCompatActivity() {
      * Registers [portraitStateScript] as document-start so every document
      * created AFTER registration loads with the attributes already applied —
      * the page simply renders in its final state, no flash or jump. Called
-     * at startup and again from onResume whenever the toggles have changed
+     * at startup and again from onResume whenever either HUD toggle has changed
      * since the last registration (document-start scripts are registered as
      * a fixed string, so a change needs a fresh registration; the newer
      * script runs after the older ones, so the newest state wins). The
@@ -562,10 +672,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Orientation lock ON (default) -> lock the app to portrait. The injected
+     * Orientation lock ON -> lock the app to portrait. The injected
      * script still tells the site it is in landscape, which bypasses the game's
      * "rotate your phone to landscape" gate so it is playable in portrait.
-     * Orientation lock OFF -> follow the device sensor; the page then receives
+     * Orientation lock OFF (default) -> follow the device sensor; the page then receives
      * real orientation values (no spoof is installed).
      */
     private fun applyOrientationLock(enabled: Boolean) {
@@ -605,13 +715,16 @@ class MainActivity : AppCompatActivity() {
         // remain reachable from the device's App info page either way.
         applySettingsAccess()
 
-        // "Clock top-left" / "Enlarge bottom bar" toggles: re-register the
+        // Portrait HUD/battle settings: re-register the
         // document-start state if the prefs changed (so future documents
         // load already-correct), then flip the attributes on the CURRENT
         // document live — no reloading the game.
         installPortraitState()
         applyPortraitState()
 
+        // Resync both independent alert types, including permission changes,
+        // and cancel reminders whose settings have been turned off.
+        ZoneNotifier.resync(applicationContext)
         // "Reload game" (settings row / long-press shortcut): rebuild the
         // screen; onCreate consumes the flag and lands on /play regardless
         // of what page is currently open.
@@ -639,8 +752,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Applies BOTH portrait toggles to the current document by evaluating
-     * [portraitStateScript]. Called from onPageStarted (fresh document —
+     * Applies the independent portrait HUD and battle settings to the current document
+     * using [portraitStateScript]. Called from onPageStarted (fresh document —
      * a redundant same-value re-assert when document-start state is
      * installed, the actual path on providers without it) and from
      * onResume (the live flip when a toggle changed in Settings). The
@@ -651,7 +764,7 @@ class MainActivity : AppCompatActivity() {
         view?.evaluateJavascript(portraitStateScript(), null)
     }
 
-    /** Applies the "Keep screen on" toggle (default ON while playing). */
+    /** Applies the "Keep screen on" toggle (default OFF). */
     private fun applyKeepScreenOn() {
         if (AppPreferences.isKeepScreenOn(this)) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -736,6 +849,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val DISCLAIMER_TAG = "startup_disclaimer"
+        private const val DISCLAIMER_RESULT = "disclaimer_acknowledged"
         private const val HOME_URL = "https://yakkamon.com/play"
         private const val YAKKAMON_HOST = "yakkamon.com"
         private const val ORIENTATION_SCRIPT = "orientation-override.js"
@@ -743,6 +858,9 @@ class MainActivity : AppCompatActivity() {
         private const val PORTRAIT_POPUP_SCRIPT = "portrait-popup-fix.js"
         private const val PORTRAIT_BOTTOM_BAR_SCRIPT = "portrait-bottom-bar-fix.js"
         private const val PORTRAIT_CLOCK_SCRIPT = "portrait-clock-fix.js"
+        private const val ZONE_ALERTS_SCRIPT = "zone-alerts.js"
+        private const val BATTLE_ALERTS_SCRIPT = "battle-alerts.js"
+        private const val ZONE_BRIDGE = "YakZoneBridge"
         private const val CAMERA_TEST_SCRIPT = "debug-camera-test.js"
         private const val ACTION_RELOAD = "com.yak.browser.action.RELOAD"
         private const val REVIEW_FIRST_SESSION = 5
