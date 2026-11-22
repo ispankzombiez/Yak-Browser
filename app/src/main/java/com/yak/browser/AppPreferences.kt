@@ -27,6 +27,9 @@ object AppPreferences {
      */
     const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
 
+    const val KEY_KEEP_STATUS_BAR_VISIBLE = "keep_status_bar_visible"
+    const val KEY_KEEP_NAVIGATION_BAR_VISIBLE = "keep_navigation_bar_visible"
+
     /**
      * When true, the site's clock group (clock pill + the two icons in the
      * bottom-right corner) is moved to the top-left corner — portrait
@@ -104,6 +107,14 @@ object AppPreferences {
     fun isKeepScreenOn(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
             .getBoolean(KEY_KEEP_SCREEN_ON, false)
+
+    fun isKeepStatusBarVisible(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_KEEP_STATUS_BAR_VISIBLE, false)
+
+    fun isKeepNavigationBarVisible(context: Context): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean(KEY_KEEP_NAVIGATION_BAR_VISIBLE, false)
 
     fun isClockTopLeft(context: Context): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)

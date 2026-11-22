@@ -71,6 +71,7 @@ class SettingsActivityTest {
         val keys = listOf(
             AppPreferences.KEY_ORIENTATION_LOCK, AppPreferences.KEY_SETTINGS_ACCESS,
             AppPreferences.KEY_KEEP_SCREEN_ON, AppPreferences.KEY_CLOCK_TOP_LEFT,
+            AppPreferences.KEY_KEEP_STATUS_BAR_VISIBLE, AppPreferences.KEY_KEEP_NAVIGATION_BAR_VISIBLE,
             AppPreferences.KEY_ENLARGE_BOTTOM_BAR, AppPreferences.KEY_TOP_BOTTOM_BATTLES
         )
         for (key in keys) assertFalse(fragment.findPreference<SwitchPreferenceCompat>(key)!!.isChecked)
@@ -78,13 +79,17 @@ class SettingsActivityTest {
         assertFalse(AppPreferences.isKeepScreenOn(application))
         PreferenceManager.getDefaultSharedPreferences(application).edit()
             .putBoolean(AppPreferences.KEY_ORIENTATION_LOCK, true)
-            .putBoolean(AppPreferences.KEY_KEEP_SCREEN_ON, true).commit()
+            .putBoolean(AppPreferences.KEY_KEEP_SCREEN_ON, true)
+            .putBoolean(AppPreferences.KEY_KEEP_STATUS_BAR_VISIBLE, true)
+            .putBoolean(AppPreferences.KEY_KEEP_NAVIGATION_BAR_VISIBLE, true).commit()
         controller!!.recreate()
         assertTrue(AppPreferences.isOrientationLockEnabled(application))
         assertTrue(AppPreferences.isKeepScreenOn(application))
         val restored = controller!!.get().supportFragmentManager.findFragmentById(R.id.settingsContainer) as SettingsActivity.SettingsFragment
         assertTrue(restored.findPreference<SwitchPreferenceCompat>(AppPreferences.KEY_ORIENTATION_LOCK)!!.isChecked)
         assertTrue(restored.findPreference<SwitchPreferenceCompat>(AppPreferences.KEY_KEEP_SCREEN_ON)!!.isChecked)
+        assertTrue(restored.findPreference<SwitchPreferenceCompat>(AppPreferences.KEY_KEEP_STATUS_BAR_VISIBLE)!!.isChecked)
+        assertTrue(restored.findPreference<SwitchPreferenceCompat>(AppPreferences.KEY_KEEP_NAVIGATION_BAR_VISIBLE)!!.isChecked)
     }
 
     @Test

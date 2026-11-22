@@ -24,6 +24,20 @@
 
     <SwitchPreferenceCompat
         app:defaultValue="false"
+        app:key="keep_status_bar_visible"
+        app:summaryOff="Status bar hides during play; swipe to reveal it"
+        app:summaryOn="Android status bar stays visible (time, battery and notifications)"
+        app:title="Keep status bar visible" />
+
+    <SwitchPreferenceCompat
+        app:defaultValue="false"
+        app:key="keep_navigation_bar_visible"
+        app:summaryOff="Navigation bar hides during play; swipe to reveal it"
+        app:summaryOn="Android navigation buttons or gesture bar stay visible"
+        app:title="Keep navigation bar visible" />
+
+    <SwitchPreferenceCompat
+        app:defaultValue="false"
         app:key="clock_top_left"
         app:summaryOff="Clock stays in the bottom-right corner"
         app:summaryOn="Clock moves to the top-left (portrait only — landscape unchanged)"

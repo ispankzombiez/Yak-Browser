@@ -10,7 +10,7 @@ is <https://yakkamon.com/play>.
 | Game page | `MainActivity` hosts a single fullscreen `WebView` loading `https://yakkamon.com/play`. |
 | Navigation policy | `yakkamon.com` and all subdomains load inside the app. Any other link opens in the user's default browser via a **Chrome Custom Tab**, so the game WebView never navigates away. Other schemes (`javascript:`, `file:`, `intent:`) are blocked. |
 | Landscape enforcement | Orientation lock defaults OFF: the activity follows the device sensor and the site receives real orientation. When enabled after a warning, the activity locks to **portrait** and `assets/orientation-override.js` is injected **at document start** (via `WebViewCompat.addDocumentStartJavaScript`), reporting landscape through `window.orientation`, `screen.orientation` and orientation media queries so the landscape-designed game can run in portrait. |
-| Immersive fullscreen | System bars hidden with swipe-from-edge reveal; `FLAG_KEEP_SCREEN_ON` applies only when Keep screen on is enabled (default OFF). |
+| Immersive fullscreen | System bars hidden with swipe-from-edge reveal by default. Main has independent Keep status bar visible and Keep navigation bar visible toggles, both OFF by default. They apply on return without reloading the game and survive focus changes. The game reserves visible bar insets (including side navigation in landscape), while transient swipe-revealed bars leave the fullscreen viewport unchanged. `FLAG_KEEP_SCREEN_ON` applies only when Keep screen on is enabled (default OFF). |
 | Settings page | The floating gear opens `SettingsActivity` with Main and Notifications tabs (AndroidX Preference and Material TabLayout). Every Main toggle defaults OFF; existing saved choices are preserved. Settings access hides the gear when enabled. Changing orientation lock rebuilds the browser screen on return. Reload game uses the existing `pending_reload` hand-off. About contains version, Privacy Policy, and support contact. |
 | Settings entry points | Settings stay reachable even with the gear hidden, on every OEM: (1) **static "Settings" + "Reload" long-press shortcuts** on the app icon (`res/xml/shortcuts.xml` + a `src/debug` override carrying the `.debug` applicationId; note the attrs are `android:shortcutShortLabel`/`shortcutLongLabel` — plain `shortLabel`/`longLabel` do not exist in the framework and fail AAPT, and the label attrs require `@string/` references); (2) **`APPLICATION_PREFERENCES` + `NOTIFICATION_PREFERENCES` intent filter** on the exported `SettingsActivity` (same pattern as SFL-Browser) — Samsung One UI shows a **"Configure in &lt;app&gt;"** row on the App info page (under Usage), verified live on device. |
 | Robustness | Error panel with Retry on main-frame load failures; WebView renderer crashes handled via `onRenderProcessGone`; DOM storage + autoplay audio enabled for the game. |
@@ -37,6 +37,17 @@ Measured on the real page at 384×832 CSS px:
 Note: CDP `Emulation.setDeviceMetricsOverride` is ignored by this WebView
 build, so landscape-baseline comparisons must be done by reasoning about the
 anchoring classes (or physically rotating with the lock OFF).
+
+## Email-code login
+
+Inside YakBrowser, `email-code-login.js` hides the Google sign-in alternative
+and its OR separator before first paint, for both signup and login. Users use
+the site's existing emailed-code input and verification/back controls instead.
+The override keeps the expected Google placeholder markup intact so the
+site's scripts do not fail; it does not change the authentication API or
+existing saved sessions. It applies only to the app's injected pages, not
+the website in a normal browser. The unsuccessful native Google integration
+and its dependencies have been removed.
 
 ## Arrival alerts
 

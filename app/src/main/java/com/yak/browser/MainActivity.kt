@@ -95,6 +95,10 @@ class MainActivity : AppCompatActivity() {
     private var startupDialogsContinued = false
     private var reviewSessions: Int? = null
 
+    private val emailCodeLoginScript: String by lazy {
+        assets.open("email-code-login.js").bufferedReader(Charsets.UTF_8).use { it.readText() }
+    }
+
     /** Cached copy of the orientation override script (injected per navigation as fallback). */
     private val orientationScript: String by lazy {
         assets.open(ORIENTATION_SCRIPT).bufferedReader(Charsets.UTF_8).use { it.readText() }
@@ -173,9 +177,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Keep the screen on while the game is in front (toggleable in
-        // settings), and go immersive.
+        // settings), and apply the saved system bar visibility.
         applyKeepScreenOn()
-        hideSystemBars()
+        applySystemBars()
 
         setContentView(R.layout.activity_main)
         webView = findViewById(R.id.webView)
@@ -191,19 +195,27 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         applySettingsAccess()
-        // Keep the gear clear of the camera cutout / status area: pad it by the
-        // safe insets the same way the page's own HUD does.
-        ViewCompat.setOnApplyWindowInsetsListener(settingsButton) { v, insets ->
+        val gameRoot = findViewById<View>(R.id.gameRoot)
+        ViewCompat.setOnApplyWindowInsetsListener(gameRoot) { v, insets ->
+            val bars = insets.getInsets(visibleSystemBarTypes())
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             val safe = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
             val margin = (10 * resources.displayMetrics.density).toInt()
-            (v.layoutParams as ViewGroup.MarginLayoutParams).apply {
-                setMargins(safe.left + margin, safe.top + margin, margin, margin)
+            (settingsButton.layoutParams as ViewGroup.MarginLayoutParams).apply {
+                setMargins(
+                    (safe.left - bars.left).coerceAtLeast(0) + margin,
+                    (safe.top - bars.top).coerceAtLeast(0) + margin,
+                    margin,
+                    margin
+                )
             }
-            v.requestLayout()
-            insets
+            settingsButton.requestLayout()
+            // Children receive only the safe area not already reserved by the root.
+            insets.inset(bars.left, bars.top, bars.right, bars.bottom)
         }
+        ViewCompat.requestApplyInsets(gameRoot)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -469,7 +481,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             betaGuardScript
         }
-        return "$guard\n$portraitPopupScript\n$portraitBottomBarScript\n$portraitClockScript\n$zoneAlertsScript\n$battleAlertsScript"
+        return "$emailCodeLoginScript\n$guard\n$portraitPopupScript\n$portraitBottomBarScript\n$portraitClockScript\n$zoneAlertsScript\n$battleAlertsScript"
     }
 
     /**
@@ -686,22 +698,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Immersive mode: full-screen game view, swipe from an edge to peek at system bars. */
-    private fun hideSystemBars() {
+    private fun visibleSystemBarTypes(): Int {
+        var types = 0
+        if (AppPreferences.isKeepStatusBarVisible(this)) types = types or WindowInsetsCompat.Type.statusBars()
+        if (AppPreferences.isKeepNavigationBarVisible(this)) types = types or WindowInsetsCompat.Type.navigationBars()
+        return types
+    }
+
+    private fun applySystemBars() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        val visible = visibleSystemBarTypes()
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            hide(WindowInsetsCompat.Type.systemBars())
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars() and visible.inv())
+            if (visible != 0) show(visible)
+            systemBarsBehavior = if (visible ==
+                (WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+            ) {
+                WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+            } else {
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
         }
+        ViewCompat.requestApplyInsets(window.decorView)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) hideSystemBars() // re-hide after dialogs, keyboard, etc.
+        if (hasFocus) applySystemBars()
     }
 
     override fun onResume() {
         super.onResume()
+        applySystemBars()
         webView.onResume()
 
         // Coming back from the settings page: if the orientation lock changed,
