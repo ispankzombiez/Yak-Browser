@@ -42,19 +42,37 @@
       <h2>About</h2>
       <p>
         <strong>YakBrowser</strong> is an open-source Android browser for the monster-collecting game <a href="https://yakkamon.com/" target="_blank">Yakkamon</a>.
-        The game normally refuses to run unless your phone is held sideways &mdash; YakBrowser lets you play in <strong>portrait mode</strong>, holding your phone the normal way, with a fullscreen immersive experience and a built-in settings gear right on the game screen.
+        The game was designed for landscape &mdash; YakBrowser offers <strong>optional portrait mode</strong>, improved portrait layouts, and configurable game settings. By default, the app follows your phone's rotation; enable <strong>Lock orientation</strong> to play upright.
       </p>
     </section>
     <section>
-      <h2>Features</h2>
+      <h2>Features in the Current Source</h2>
       <ul>
-        <li>Play Yakkamon in <b>portrait mode</b> (no more holding your phone sideways)</li>
-        <li>Orientation lock toggle &mdash; prefer landscape? One switch in settings</li>
-        <li>Fullscreen immersive gameplay with the screen kept on</li>
+        <li>Optional <b>portrait mode</b>, with a confirmation about possible layout issues when enabling orientation lock</li>
+        <li>Improved portrait menus, caught-Yakkamon popups, PvP &ldquo;See all&rdquo; lists, and battle framing that fits your team on screen</li>
+        <li>Optional <b>Top vs bottom battles</b> in portrait: your team below, enemies above</li>
+        <li><b>Main</b> and <b>Notifications</b> settings tabs</li>
+        <li>Optional <b>Clock top-left</b> and <b>Enlarge bottom bar</b> portrait HUD controls</li>
+        <li>Independent <b>Keep status bar visible</b> and <b>Keep navigation bar visible</b> toggles; fullscreen with swipe-to-reveal by default</li>
+        <li>Optional <b>Keep screen on</b> during gameplay</li>
+        <li>Arrival alerts and regular battle-challenge refresh reminders, with permission controls, optional exact timing, and a test notification</li>
         <li>Yakkamon links open in-app; everything else opens in your default browser</li>
-        <li>Quick access to settings via a corner gear &mdash; no leaving the game</li>
+        <li>Quick settings access via the corner gear, or the app icon's long-press Settings shortcut on Android 7.1+ with a supported launcher</li>
         <li>Completely open-source and community maintained</li>
       </ul>
+    </section>
+
+    <section id="compatibility">
+      <h2>Android Compatibility</h2>
+      <p><strong>Minimum Android version: Android 7.0 (API 24).</strong></p>
+      <p>Keep <strong>Android System WebView</strong> updated to the latest version available for your device. The game and some features depend on WebView capabilities, so older versions may behave differently. This latest build has not yet been verified on Android 7 hardware.</p>
+    </section>
+
+    <section id="download">
+      <h2>Download &amp; Version</h2>
+      <p><strong>Current source/build:</strong> version <strong>1.0.11</strong>, Android <strong>version code 13</strong>.</p>
+      <p><a href="https://github.com/ispankzombiez/Yak-Browser/releases/latest" target="_blank">Download the latest published APK from GitHub Releases</a>.</p>
+      <p>The published APK may lag behind the source features described above. Pushing source changes or building an AAB does not update the GitHub APK; a new APK must be published through the release workflow.</p>
     </section>
 
     <section id="google-play">
@@ -78,11 +96,14 @@
     <section>
       <h2>A Note For Players</h2>
       <ul>
-        <li>The app defaults to <b>portrait lock ON</b>: the screen stays portrait and the game is told it's in landscape, so it plays normally while you hold your phone upright.</li>
+        <li><b>All Main switches default OFF</b> on a fresh installation; previously saved choices are preserved. Notification controls are separate.</li>
         <li>To change settings, tap the small <b>gear icon in the top-left corner</b> of the game screen.</li>
-        <li>Inside settings, the <b>"Lock orientation"</b> switch controls this behavior: ON = play in portrait; OFF = the app follows your phone's sensor with no spoofing at all.</li>
-        <li>Optional: the <b>"Settings access"</b> switch hides the floating gear for a cleaner game screen. Settings stay reachable either way &mdash; <b>long-press the YakBrowser icon</b> and tap <b>Settings</b> (works on every phone), or open your device's <b>App&nbsp;info</b> page for YakBrowser and tap <b>&ldquo;Configure in YakBrowser&rdquo;</b> (shown on some phones, e.g.&nbsp;Samsung).</li>
-        <li>Settings also include <b>&ldquo;Keep screen on&rdquo;</b> (default on), a <b>&ldquo;Reload game&rdquo;</b> action (also in the icon&#8217;s long-press menu) for a fresh start without closing the app, and an <b>About</b> section with the version, privacy policy, and support contact.</li>
+        <li>In the <b>Main</b> tab, <b>&ldquo;Lock orientation&rdquo;</b> controls rotation: ON = portrait play after a confirmation; OFF = the app follows your phone's sensor with no orientation spoofing.</li>
+        <li>Optional: the <b>"Settings access"</b> switch hides the floating gear for a cleaner game screen. Before hiding it, confirm you can <b>long-press the YakBrowser icon</b> and tap <b>Settings</b> (Android 7.1+ with a supported launcher), or open your device's <b>App&nbsp;info</b> page for YakBrowser and tap <b>&ldquo;Configure in YakBrowser&rdquo;</b> (shown on some phones, e.g.&nbsp;Samsung).</li>
+        <li><b>&ldquo;Keep screen on&rdquo;</b>, both Android bar visibility switches, and the portrait HUD options are opt-in. <b>&ldquo;Top vs bottom battles&rdquo;</b> applies during preparation, or the next battle if combat has started.</li>
+        <li>The <b>Notifications</b> tab includes arrival alerts, <b>&ldquo;New battle challenges&rdquo;</b>, permission status (<b>Enable</b> or <b>Granted</b>), optional exact alarm timing, and <b>&ldquo;Send test notification&rdquo;</b>.</li>
+        <li>Open the game to learn arrival timers and open Battles to learn its next challenge refresh. Battle reminders are one-shot: open Battles again to schedule the next refresh. Farm-visitor reminders are tentative; Android may delay alerts unless exact timing is enabled and permitted.</li>
+        <li><b>&ldquo;Reload game&rdquo;</b> is available in settings and the icon&#8217;s long-press menu. <b>About</b> contains the version, privacy policy, and support contact.</li>
         <li>Links that leave yakkamon.com open in your default browser instead of inside the app.</li>
       </ul>
     </section>

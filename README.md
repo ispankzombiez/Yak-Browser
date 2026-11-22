@@ -2,16 +2,33 @@
 
 # YakBrowser
 
-An unofficial Android app for [Yakkamon](https://yakkamon.com/) built with Kotlin and Android WebView. It exists for one main purpose: **letting you play Yakkamon in portrait mode** — the game normally refuses to run unless your phone is held sideways, and YakBrowser politely tells it otherwise so you can play holding your phone normally.
+An unofficial Android app for [Yakkamon](https://yakkamon.com/) built with Kotlin and Android WebView. It offers **optional portrait play**, improved portrait layouts, and configurable game settings. By default, the app follows your phone's rotation; enable **Lock orientation** to play upright.
 
-## 🚀 Features
+## 🚀 Features in the Current Source
 
-- **Play in portrait**: The app locks to portrait and lets the game believe it's in landscape, so you can play Yakkamon holding your phone the normal way
-- **Orientation lock toggle**: Prefer landscape? Turn the lock off in settings and the app follows your phone's sensor with zero spoofing
-- **Fullscreen immersive**: System bars hidden, screen stays on — just you and the game
+- **Optional portrait mode**: Enable Lock orientation after a confirmation about possible layout issues; leave it off to follow your phone's sensor without orientation spoofing
+- **Portrait-friendly layouts**: Improved menus, caught-Yakkamon popups, PvP "See all" lists, and battle framing that fits your team on screen
+- **Top vs bottom battles**: An optional portrait layout places your team below the enemy team; changes apply during preparation or the next battle if combat has started
+- **Tabbed settings**: Main contains display/game options; Notifications contains alert controls
+- **Customizable portrait HUD**: Optional Clock top-left and Enlarge bottom bar settings
+- **Independent Android bars**: Keep the status bar, navigation bar, both, or neither visible; both toggles default off, with swipe-to-reveal in fullscreen
+- **Optional Keep screen on**: Prevent the screen from sleeping during play when enabled
+- **Notification controls**: Arrival alerts, regular battle-challenge refresh reminders, Enable/Granted permission status, optional exact alarm timing, and a test notification
 - **Smart link handling**: Yakkamon pages open in-app; any other link opens in your default browser
-- **Settings overlay**: A small gear in the corner opens settings without leaving the game
+- **Settings access**: Use the corner gear, or the app icon's long-press Settings shortcut on Android 7.1+ with a supported launcher
 - **Completely open-source and community maintained**
+
+All Main switches default **off** on a fresh installation; previously saved choices are preserved. Notifications are controlled separately in the Notifications tab.
+
+Before hiding the gear, confirm your device offers the Settings shortcut or an App info settings entry. The App info option depends on the device.
+
+Open the game to learn arrival timers and open Battles to learn its next challenge refresh. Battle reminders are one-shot: open Battles again to schedule the next refresh. Farm-visitor reminders are tentative, and Android may delay alerts unless exact timing is enabled and permitted.
+
+## 📱 Android Compatibility
+
+- **Minimum Android version: Android 7.0 (API 24)**.
+- Keep **Android System WebView** updated to the latest version available for your device.
+- The game and some features depend on WebView capabilities. Older WebView versions may behave differently, and this latest build has not yet been verified on Android 7 hardware.
 
 ## 📱 Screenshots
 
@@ -19,9 +36,13 @@ An unofficial Android app for [Yakkamon](https://yakkamon.com/) built with Kotli
 
 ## 🔗 Download
 
+**Current source/build:** version **1.0.11**, Android **version code 13**.
+
 🔗 Download the latest APK directly from GitHub Releases: **[Go to Latest Release Page](https://github.com/ispankzombiez/Yak-Browser/releases/latest)**
 
 The APK is named <code>yakbrowser-v[version].apk</code> and is always available on the latest release page.
+
+The published APK may lag behind the source features described above. Pushing source changes or building an AAB does not update the GitHub APK; a new APK must be published through the release workflow.
 
 📲 Google Play release planned — watch the GitHub Releases page for announcements.
 
