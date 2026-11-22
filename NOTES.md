@@ -138,8 +138,8 @@ Questions to ask the Yakkamon team when the API is ready:
 |---|---|
 | Repo | <https://github.com/ispankzombiez/Yak-Browser> (public, `main` branch) |
 | Website (GitHub Pages) | `docs/index.html`, served from **main /docs** → <https://ispankzombiez.github.io/Yak-Browser/> (also hosts the privacy policy URL for Play) |
-| Release CI | `.github/workflows/android-release.yml` — manual trigger (`workflow_dispatch`); JDK 17; decodes keystore from secrets; builds `assembleRelease`; renames APK to `yakbrowser-v[version].apk`; publishes GitHub release `v[version]` **and** updates the moving `latest` release |
-| Versioning | Bump `versionCode` (+1 per release) and `versionName` in `app/build.gradle.kts`; the workflow greps `versionName` for the tag + APK filename |
+| Release CI | `.github/workflows/android-release.yml` — manual trigger (`workflow_dispatch`); serialized runs; JDK 17; decodes keystore from secrets; builds `assembleRelease`; renames APK to `yakbrowser-v[version]-build[versionCode].apk`; publishes a fresh `v[version]-build[versionCode]` release at the workflow commit and marks it Latest. Historical releases, including the old `latest` tag, are not replaced. |
+| Versioning | Increment `versionCode` for each new released build; change `versionName` when changing the display version. The workflow reads both from `app/build.gradle.kts` and rejects any version code that already has a build-release tag, preserving its publication date and APK. |
 | CI secrets (Settings → Secrets → Actions) | `RELEASE_KEYSTORE` (base64 of the .jks — copy from `C:\Users\caleb\Documents\keystores\RELEASE_KEYSTORE.base64.txt`), `KEYSTORE_PASSWORD`, `KEY_ALIAS` (= `yakbrowser`), `KEY_PASSWORD` |
 | Play upload | Build locally: `.\gradlew.bat bundleRelease` → `app\build\outputs\bundle\release\app-release.aab` (signed with the same upload key). **Always upload that file straight from the build outputs folder** — no copy or rename; Play identifies builds by versionCode, not filename. AAB = "Android App Bundle" (not OBB). |
 

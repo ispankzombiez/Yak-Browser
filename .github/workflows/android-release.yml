@@ -6,6 +6,10 @@ permissions:
 on:
   workflow_dispatch:
 
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,6 +20,30 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Prepare a new build release
+        id: version
+        run: |
+          VERSION_NAME=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts)
+          VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p' app/build.gradle.kts)
+          if [[ -z "$VERSION_NAME" || ! "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Could not read a valid versionName and versionCode from app/build.gradle.kts."
+            exit 1
+          fi
+          RELEASE_TAG="v${VERSION_NAME}-build${VERSION_CODE}"
+          if ! git check-ref-format "refs/tags/$RELEASE_TAG"; then
+            echo "::error::The app version produces an invalid release tag."
+            exit 1
+          fi
+          EXISTING_TAG=$(git ls-remote --tags origin "refs/tags/*-build${VERSION_CODE}")
+          if [[ -n "$EXISTING_TAG" ]]; then
+            echo "::error::Android version code $VERSION_CODE already has a release tag. Bump versionCode before publishing another build."
+            exit 1
+          fi
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "apk_name=yakbrowser-${RELEASE_TAG}.apk" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -43,40 +71,23 @@ jobs:
         run: |
           ./gradlew assembleRelease
 
-      - name: Get version name from build.gradle.kts
-        id: version
-        run: |
-          VERSION_NAME=$(grep versionName app/build.gradle.kts | head -1 | sed 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/')
-          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
-
-      - name: Rename APK with version
-        run: |
-          mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/yakbrowser-v${{ steps.version.outputs.version_name }}.apk
-
-      - name: Create versioned GitHub Release and Upload APK
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.version_name }}
-          name: YakBrowser v${{ steps.version.outputs.version_name }}
-          body: Automated release of YakBrowser version ${{ steps.version.outputs.version_name }} APK.
-          draft: false
-          prerelease: false
-          files: app/build/outputs/apk/release/yakbrowser-v${{ steps.version.outputs.version_name }}.apk
+      - name: Rename APK with version and build number
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APK_NAME: ${{ steps.version.outputs.apk_name }}
+        run: |
+          mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/$APK_NAME"
 
-      - name: Update 'latest' GitHub Release with newest APK
+      - name: Publish new build release as Latest
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: YakBrowser (Latest)
-          body: |
-            This is the latest release. For version history, see previous releases.
-
-            Version: ${{ steps.version.outputs.version_name }}
+          tag_name: ${{ steps.version.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: YakBrowser v${{ steps.version.outputs.version_name }} (build ${{ steps.version.outputs.version_code }})
+          body: Automated release of YakBrowser version ${{ steps.version.outputs.version_name }} APK (Android version code ${{ steps.version.outputs.version_code }}).
           draft: false
           prerelease: false
-          files: app/build/outputs/apk/release/yakbrowser-v${{ steps.version.outputs.version_name }}.apk
-          overwrite_files: true
+          make_latest: "true"
+          fail_on_unmatched_files: true
+          files: app/build/outputs/apk/release/${{ steps.version.outputs.apk_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

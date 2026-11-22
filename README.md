@@ -40,7 +40,7 @@ Open the game to learn arrival timers and open Battles to learn its next challen
 
 🔗 Download the latest APK directly from GitHub Releases: **[Go to Latest Release Page](https://github.com/ispankzombiez/Yak-Browser/releases/latest)**
 
-The APK is named <code>yakbrowser-v[version].apk</code> and is always available on the latest release page.
+New release APKs are named <code>yakbrowser-v[version]-build[versionCode].apk</code> and are available on the latest release page.
 
 The published APK may lag behind the source features described above. Pushing source changes or building an AAB does not update the GitHub APK; a new APK must be published through the release workflow.
 
@@ -101,12 +101,14 @@ Or open the project folder in **Android Studio** and press Run.
 
 ## 🔧 Releasing a New Version
 
-1. Bump `versionCode` (integer, +1 every release) and `versionName` (display version) in `app/build.gradle.kts`.
+1. Increment `versionCode` for every new released build in `app/build.gradle.kts`; update `versionName` when changing the display version.
 2. Commit and push to `main`.
 3. In GitHub, go to **Actions → Android Release Build → Run workflow**.
 4. The workflow builds a signed APK and publishes:
-   - A versioned release: `v[version]` with the APK `yakbrowser-v[version].apk`
-   - An updated moving **`latest`** release with the newest APK
+   - A new build release: `v[version]-build[versionCode]` with the APK `yakbrowser-v[version]-build[versionCode].apk`
+   - GitHub's **Latest** designation on that release, so the latest-release link points to the new post with its actual publication date
+
+Already-published version codes are rejected instead of replacing their APKs. Existing releases remain in the history. The old release tagged `latest` is no longer updated; use [GitHub's latest-release link](https://github.com/ispankzombiez/Yak-Browser/releases/latest) instead.
 
 ## 🛡️ Security
 
